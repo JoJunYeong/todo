@@ -1,0 +1,26 @@
+name: Verify Daynote
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Verify account isolation and administrator rules
+        run: npx --yes firebase-tools@15.34.0 emulators:exec --project demo-daynote-ein6xs --only firestore "npm run test:rules"

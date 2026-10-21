@@ -7,17 +7,20 @@
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "test": "node --test tests/*.test.mjs"
+    "test": "node --test tests/*.test.mjs",
+    "test:rules": "node --test tests/security.rules.mjs"
   },
   "dependencies": {
     "dompurify": "^3.3.0",
     "firebase": "12.12.1",
     "lucide-react": "^0.468.0",
+    "marked": "^18.1.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "rrule": "^2.8.1"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.0",
     "@vitejs/plugin-react": "^6.1.2",
     "vite": "^8.3.4"
   }
