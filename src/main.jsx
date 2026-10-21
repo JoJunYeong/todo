@@ -429,7 +429,7 @@ function Planner({ user, profile, isAdmin, store, notify }) {
     [selectedDay, setSelectedDay] = useState(today),
     [tasks, setTasks] = useState([]),
     [calendars, setCalendars] = useState([]),
-    [calId, setCalId] = useState(""),
+    [calId, setCalId] = useState(profile.settings?.selectedCalendarId || ""),
     [loaded, setLoaded] = useState(false),
     [sync, setSync] = useState({ cached: true, pending: false }),
     [view, setView] = useState("week"),
@@ -544,7 +544,12 @@ function Planner({ user, profile, isAdmin, store, notify }) {
   const toggle = (t) => run(() => store.toggleTask(user.uid, t));
   const newTask = (text, place) =>
     run(() => store.addTask(user.uid, { text, calendarId: calId, ...place }));
-  const openTask = (t) => setActiveTask(t);
+  const openTask = (t) =>
+    setActiveTask(
+      !t.date && !t.listId && t.freq && t.dtStart
+        ? { ...t, date: t.dtStart }
+        : t,
+    );
   const backlogProps = {
     calendar,
     live,
@@ -567,7 +572,7 @@ function Planner({ user, profile, isAdmin, store, notify }) {
     setStart(next);
     setSelectedDay(addDays(selectedDay, n * 7));
   };
-  const drop = (event, date, listId = null, before = null) => {
+  function drop(event, date, listId = null, before = null) {
     event.preventDefault();
     const id = event.dataTransfer.getData("application/daynote"),
       task = week.find((t) => t.id === id) || tasks.find((t) => t.id === id);
@@ -587,7 +592,7 @@ function Planner({ user, profile, isAdmin, store, notify }) {
           ? (peers.at(-1)?.order || Date.now()) + 1024
           : ((peers[at - 1].order || 0) + (peers[at].order || 0)) / 2;
     run(() => store.patchTask(user.uid, task, { date, listId, order }));
-  };
+  }
   const logout = async () => {
     if (
       sync.pending &&
@@ -665,6 +670,11 @@ function Planner({ user, profile, isAdmin, store, notify }) {
             className={"calendar-choice " + (calId === c.id ? "selected" : "")}
             onClick={() => {
               setCalId(c.id);
+              run(() =>
+                store.updateUser(user.uid, {
+                  "settings.selectedCalendarId": c.id,
+                }),
+              );
               setShowDrawer(false);
             }}
           >
@@ -939,7 +949,7 @@ function Planner({ user, profile, isAdmin, store, notify }) {
                   setHideCompleted(next);
                   run(() =>
                     store.updateUser(user.uid, {
-                      settings: { ...profile.settings, hideCompleted: next },
+                      "settings.hideCompleted": next,
                     }),
                   );
                 }}
@@ -1225,6 +1235,11 @@ function Planner({ user, profile, isAdmin, store, notify }) {
             notify={notify}
             onImported={(id) => {
               setCalId(id);
+              run(() =>
+                store.updateUser(user.uid, {
+                  "settings.selectedCalendarId": id,
+                }),
+              );
               setPanel(null);
               setView("week");
             }}
@@ -1482,4 +1497,30 @@ function App() {
     </>
   );
 }
-createRoot(document.getElementById("root")).render(<App />);
+class AppBoundary extends React.Component {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    return this.state.failed ? (
+      <div className="fatal-error">
+        <Brand />
+        <h2>화면을 다시 열어 주세요</h2>
+        <p>
+          일시적인 오류가 발생했어요. 다시 불러오면 이어서 사용할 수 있어요.
+        </p>
+        <button className="primary" onClick={() => location.reload()}>
+          다시 불러오기
+        </button>
+      </div>
+    ) : (
+      this.props.children
+    );
+  }
+}
+createRoot(document.getElementById("root")).render(
+  <AppBoundary>
+    <App />
+  </AppBoundary>,
+);

@@ -14,6 +14,41 @@ import {
   materialize,
 } from "../src/domain.js";
 
+test("a moved recurring occurrence appears once in its destination week", () => {
+  const input = [
+    task({ freq: 2 }),
+    task({
+      id: "task_20261026",
+      date: "2026-11-03",
+      freq: 2,
+      recurringTodoId: "task",
+      text: "moved",
+    }),
+  ];
+  assert.equal(expandWeek(input, "2026-10-26").length, 0);
+  const destination = expandWeek(input, "2026-11-02");
+  assert.equal(destination.filter((t) => t.id === "task_20261026").length, 1);
+  assert.equal(
+    destination.find((t) => t.id === "task_20261026").date,
+    "2026-11-03",
+  );
+});
+
+test("deleting a series first occurrence does not leave its master visible", () => {
+  const input = [
+    task({ freq: 2 }),
+    task({
+      id: "task_20261019",
+      date: "2026-10-19",
+      freq: 2,
+      recurringTodoId: "task",
+      deleted: true,
+    }),
+  ];
+  assert.equal(expandWeek(input, "2026-10-19").length, 0);
+  assert.equal(expandWeek(input, "2026-10-26").length, 1);
+});
+
 test("ending a recurring series preserves history and stops future dates", () => {
   const input = [
     task({ freq: 2, dtStart: "2026-10-19", done: true }),

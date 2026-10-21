@@ -176,7 +176,15 @@ export function expandWeek(tasks, start, end = addDays(start, 6)) {
   const stored = new Map(
     tasks
       .filter((t) => t.recurringTodoId && t.date)
-      .map((t) => [`${t.recurringTodoId}:${t.date}`, t]),
+      .map((t) => {
+        const original = t.id.startsWith(t.recurringTodoId + "_")
+          ? t.id.slice(t.recurringTodoId.length + 1)
+          : "";
+        const scheduled = /^\d{8}$/.test(original)
+          ? `${original.slice(0, 4)}-${original.slice(4, 6)}-${original.slice(6, 8)}`
+          : t.date;
+        return [`${t.recurringTodoId}:${scheduled}`, t];
+      }),
   );
   const from = new Date(start + "T00:00:00Z"),
     to = new Date(end + "T23:59:59Z");
@@ -187,7 +195,8 @@ export function expandWeek(tasks, start, end = addDays(start, 6)) {
       task.date >= start &&
       task.date <= end &&
       !task.deleted &&
-      !task.isBaseDeleted
+      !task.isBaseDeleted &&
+      (!task.freq || task.recurringTodoId)
     )
       result.set(task.id, task);
   for (const master of tasks.filter((t) => t.freq && !t.recurringTodoId)) {
@@ -221,7 +230,12 @@ export function expandWeek(tasks, start, end = addDays(start, 6)) {
         if (key < base.segmentStart || (until && key >= until)) continue;
         const override = stored.get(`${master.id}:${key}`);
         if (override) {
-          if (!override.deleted && !override.isBaseDeleted)
+          if (
+            !override.deleted &&
+            !override.isBaseDeleted &&
+            override.date >= start &&
+            override.date <= end
+          )
             result.set(override.id, override);
           continue;
         }

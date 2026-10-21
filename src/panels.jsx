@@ -241,6 +241,10 @@ export function Details({
                 aria-label="할 일 날짜"
                 type="date"
                 value={date}
+                onInput={(e) => {
+                  setDate(e.currentTarget.value);
+                  if (e.currentTarget.value) setListId("");
+                }}
                 onChange={(e) => {
                   setDate(e.target.value);
                   if (e.target.value) setListId("");

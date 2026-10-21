@@ -34,6 +34,11 @@ export async function register(username, password, displayName) {
   await updateProfile(user, {
     displayName: displayName.trim() || username.trim(),
   });
+  const store = await import("./store.js");
+  await store.ensureProfile(user);
+  await store.updateUser(user.uid, {
+    displayName: displayName.trim() || username.trim(),
+  });
   return user;
 }
 export const logout = () => signOut(auth);

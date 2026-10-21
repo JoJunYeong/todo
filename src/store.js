@@ -27,27 +27,39 @@ import {
   validateTask,
 } from "./domain.js";
 
-export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({
-    tabManager: persistentMultipleTabManager(),
-    cacheSizeBytes: 64 * 1024 * 1024,
-  }),
-});
+export const db =
+  import.meta.hot?.data.db ||
+  initializeFirestore(app, {
+    localCache: persistentLocalCache({
+      tabManager: persistentMultipleTabManager(),
+      cacheSizeBytes: 64 * 1024 * 1024,
+    }),
+  });
+if (import.meta.hot)
+  import.meta.hot.dispose((data) => {
+    data.db = db;
+  });
 const ref = (uid, kind, id) => doc(db, "users", uid, kind, id);
 export async function ensureProfile(user) {
-  const target = doc(db, "users", user.uid),
-    existing = await getDoc(target);
-  if (!existing.exists())
-    await setDoc(target, {
-      username: user.email.split("@")[0],
-      displayName: user.displayName || user.email.split("@")[0],
-      active: true,
-      createdAt: Date.now(),
-      lastSeenAt: Date.now(),
-      settings: { hideCompleted: false },
-    });
-  else if (existing.data().active)
-    await updateDoc(target, { lastSeenAt: Date.now() });
+  const target = doc(db, "users", user.uid);
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    if ((await getDoc(target)).exists()) return;
+    throw Error("처음 접속할 때는 인터넷 연결이 필요해요.");
+  }
+  await runTransaction(db, async (transaction) => {
+    const existing = await transaction.get(target);
+    if (!existing.exists())
+      transaction.set(target, {
+        username: user.email.split("@")[0],
+        displayName: user.displayName || user.email.split("@")[0],
+        active: true,
+        createdAt: Date.now(),
+        lastSeenAt: Date.now(),
+        settings: { hideCompleted: false },
+      });
+    else if (existing.data().active)
+      transaction.update(target, { lastSeenAt: Date.now() });
+  });
 }
 export const watchProfile = (uid, next, error) =>
   onSnapshot(
