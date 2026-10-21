@@ -138,6 +138,7 @@ test("unsupported, oversized, malformed and cross-path image records are rejecte
     { width: 2561 },
     { height: 0 },
     { createdAt: 1.5 },
+    { unexpectedField: "reject before import writes" },
   ])
     assert.throws(() => validateNoteImage({ ...image, ...patch }));
 });

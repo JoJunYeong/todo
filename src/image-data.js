@@ -6,6 +6,18 @@ export const imageId = (value) =>
 export function validateNoteImage(image) {
   if (
     !image ||
+    Object.keys(image).some(
+      (key) =>
+        ![
+          "id",
+          "contentType",
+          "data",
+          "width",
+          "height",
+          "createdAt",
+          "importHash",
+        ].includes(key),
+    ) ||
     !imageId(image.id) ||
     !["image/png", "image/jpeg", "image/webp"].includes(image.contentType) ||
     typeof image.data !== "string" ||

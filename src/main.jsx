@@ -58,6 +58,8 @@ import {
 } from "./domain.js";
 import "./style.css";
 import "./planner.css";
+import { useHolidays } from "./use-holidays.js";
+import { useRollover } from "./use-rollover.js";
 import {
   readWeekPreview,
   saveWeekPreview,
@@ -67,9 +69,16 @@ import {
   previewStorage,
 } from "./preview-cache.js";
 
-const Details = lazy(() =>
-  import("./panels.jsx").then((m) => ({ default: m.Details })),
-);
+let detailsLoad;
+const loadDetails = () =>
+  (detailsLoad ||= import("./details.jsx").catch((error) => {
+    detailsLoad = null;
+    throw error;
+  }));
+const warmDetails = () => {
+  loadDetails().catch(() => {});
+};
+const Details = lazy(() => loadDetails().then((m) => ({ default: m.Details })));
 const Preferences = lazy(() =>
   import("./panels.jsx").then((m) => ({ default: m.Preferences })),
 );
@@ -393,6 +402,9 @@ function TaskCard({
       </button>
       <button
         className="task-open"
+        onPointerEnter={warmDetails}
+        onPointerDown={warmDetails}
+        onFocus={warmDetails}
         disabled={pending}
         onClick={() => onOpen(task)}
       >
@@ -453,8 +465,8 @@ function QuickAdd({ label, onAdd }) {
 
 function Planner({ user, profile, isAdmin, store, notify }) {
   const [preview] = useState(() => readWeekPreview(previewStorage(), user.uid));
-  const today = dateKey(),
-    [start, setStart] = useState(monday()),
+  const [today, setToday] = useState(dateKey);
+  const [start, setStart] = useState(monday()),
     [selectedDay, setSelectedDay] = useState(today),
     [tasks, setTasks] = useState([]),
     [calendars, setCalendars] = useState(preview?.calendars || []),
@@ -475,6 +487,37 @@ function Planner({ user, profile, isAdmin, store, notify }) {
       !!profile.settings?.hideCompleted,
     ),
     [searchLimit, setSearchLimit] = useState(60);
+  const holidays = useHolidays(start, online);
+  const rolloverError = useRollover({
+    uid: user.uid,
+    store,
+    tasks: tasks.filter((task) => task.id !== activeTask?.id),
+    today,
+    ready: loaded && !sync.cached && !sync.pending && online,
+    enabled: profile.settings?.autoRollover !== false,
+  });
+  useEffect(() => {
+    const tick = () => setToday(dateKey());
+    const timer = setInterval(tick, 30000);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", tick);
+    };
+  }, []);
+  const previousToday = useRef(today);
+  useEffect(() => {
+    const previous = previousToday.current;
+    if (
+      previous !== today &&
+      start === monday(previous) &&
+      selectedDay === previous
+    ) {
+      setStart(monday(today));
+      setSelectedDay(today);
+    }
+    previousToday.current = today;
+  }, [today, start, selectedDay]);
   const init = useRef(false),
     inputSearch = useRef(),
     sidebarRef = useRef(),
@@ -639,6 +682,15 @@ function Planner({ user, profile, isAdmin, store, notify }) {
     );
     return () => clearTimeout(timer);
   }, [loaded, user.uid, calId, start, calendars, week]);
+  useEffect(() => {
+    if (!loaded) return;
+    if (window.requestIdleCallback) {
+      const id = requestIdleCallback(warmDetails, { timeout: 1500 });
+      return () => cancelIdleCallback(id);
+    }
+    const id = setTimeout(warmDetails, 200);
+    return () => clearTimeout(id);
+  }, [loaded]);
   const run = async (fn, message) => {
     try {
       await fn();
@@ -1053,6 +1105,11 @@ function Planner({ user, profile, isAdmin, store, notify }) {
               {dataError}
             </div>
           )}
+          {rolloverError && (
+            <div role="status" className="form-error">
+              {rolloverError}
+            </div>
+          )}
           {!loaded && !(previewActive && view === "week") ? (
             <div className="board-skeleton" aria-label="일정 불러오는 중">
               {days.map((d) => (
@@ -1078,8 +1135,11 @@ function Planner({ user, profile, isAdmin, store, notify }) {
                     key={d}
                     className={
                       (selectedDay === d ? "chosen " : "") +
-                      (d === today ? "is-today" : "")
+                      (d === today ? "is-today " : "") +
+                      (holidays.days[d] ? "is-holiday" : "")
                     }
+                    aria-label={`${d} ${WEEKDAYS[i]}요일${holidays.days[d] ? " · " + holidays.days[d].join(" · ") : ""}`}
+                    title={holidays.days[d]?.join(" · ")}
                     onClick={() => setSelectedDay(d)}
                   >
                     <span>{WEEKDAYS[i]}</span>
@@ -1105,10 +1165,19 @@ function Planner({ user, profile, isAdmin, store, notify }) {
                         "day-column " +
                         (day === today ? "today-column " : "") +
                         (day === selectedDay ? "selected-day " : "") +
+                        (holidays.days[day] ? "holiday-column " : "") +
                         (i > 4 ? "weekend" : "")
                       }
                       key={day}
-                      aria-label={day + " " + WEEKDAYS[i] + "요일"}
+                      aria-label={
+                        day +
+                        " " +
+                        WEEKDAYS[i] +
+                        "요일" +
+                        (holidays.days[day]
+                          ? " · " + holidays.days[day].join(" · ")
+                          : "")
+                      }
                       onDragOver={(e) => e.preventDefault()}
                       onDrop={(e) => drop(e, day)}
                     >
@@ -1130,6 +1199,11 @@ function Planner({ user, profile, isAdmin, store, notify }) {
                               : "여유로운 하루"}
                           </span>
                         </div>
+                        {holidays.days[day] && (
+                          <p className="holiday-name">
+                            {holidays.days[day].join(" · ")}
+                          </p>
+                        )}
                       </header>
                       <div className="day-tasks">
                         {items.map((t) => (
@@ -1168,6 +1242,32 @@ function Planner({ user, profile, isAdmin, store, notify }) {
                   {new Date(addDays(start, 6) + "T12:00:00").getMonth() + 1}월{" "}
                   {Number(addDays(start, 6).slice(-2))}일
                 </span>
+                <div
+                  className="holiday-source"
+                  title={`한국천문연구원 자료 · holidays.dist.be 제공${holidays.updatedAt ? " · 갱신 " + new Date(holidays.updatedAt).toLocaleString("ko-KR") : ""}`}
+                >
+                  <a
+                    href="https://github.com/distbe/holidays#데이터-출처"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    한국 공휴일
+                  </a>
+                  <button
+                    type="button"
+                    onClick={holidays.refresh}
+                    disabled={holidays.loading}
+                    aria-label="공휴일 정보 새로고침"
+                  >
+                    {holidays.loading
+                      ? "확인 중…"
+                      : holidays.failed
+                        ? holidays.available
+                          ? "이전 정보 · 재시도"
+                          : "불러오기 재시도"
+                        : "새로고침"}
+                  </button>
+                </div>
                 <span>
                   드래그해서 날짜와 순서를 바꿔 보세요{" "}
                   <ArrowUpRight size={12} />
@@ -1294,9 +1394,28 @@ function Planner({ user, profile, isAdmin, store, notify }) {
       </div>
       <Suspense
         fallback={
-          <div className="panel-loading">
-            <Spinner />
-          </div>
+          activeTask ? (
+            <Modal
+              title="할 일 자세히"
+              onClose={() => setActiveTask(null)}
+              className="detail-modal"
+            >
+              <div className="detail-body" aria-busy="true">
+                <h2 className="detail-loading-title">{activeTask.text}</h2>
+                <section className="note-section">
+                  <h3>메모</h3>
+                  <div className="note-loading-preview">
+                    {htmlText((activeTask.note || "").slice(0, 16000)) ||
+                      "메모를 열고 있어요…"}
+                  </div>
+                </section>
+              </div>
+            </Modal>
+          ) : (
+            <div className="panel-loading">
+              <Spinner />
+            </div>
+          )
         }
       >
         {activeTask && (

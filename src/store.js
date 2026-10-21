@@ -22,6 +22,7 @@ import {
 } from "firebase/firestore";
 import { validateNoteImage, noteImageIds, imageId } from "./image-data.js";
 import { app } from "./auth.js";
+import { rolloverPatch, ROLLOVER_START } from "./rollover.js";
 import {
   parseBackup,
   backupStats,
@@ -167,6 +168,34 @@ export async function patchTask(uid, task, patch) {
 }
 export async function toggleTask(uid, task) {
   return patchTask(uid, task, { done: !task.done });
+}
+export async function rolloverTasks(uid, candidates, today) {
+  if (!candidates.length) return 0;
+  if (candidates.length > 20)
+    throw Error("자동 넘김은 한 번에 20개씩 처리해요.");
+  return runTransaction(db, async (transaction) => {
+    const profile = await transaction.get(doc(db, "users", uid));
+    if (
+      !profile.exists() ||
+      !profile.data().active ||
+      profile.data().settings?.autoRollover === false
+    )
+      return 0;
+    const snapshots = await Promise.all(
+      candidates.map((task) => transaction.get(ref(uid, "tasks", task.id))),
+    );
+    let count = 0;
+    for (let i = 0; i < snapshots.length; i++) {
+      const snapshot = snapshots[i];
+      if (!snapshot.exists() || snapshot.data().date !== candidates[i].date)
+        continue;
+      const patch = rolloverPatch(snapshot.data(), today, ROLLOVER_START);
+      if (!patch) continue;
+      transaction.update(snapshot.ref, { ...patch, updatedAt: Date.now() });
+      count++;
+    }
+    return count;
+  });
 }
 export const deleteTask = (uid, task) =>
   task.freq && !task.recurringTodoId && task.date

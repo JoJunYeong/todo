@@ -94,5 +94,6 @@ export function savedNoteHTML(editor, sanitize) {
     image.removeAttribute("src");
     image.removeAttribute("data-image-error");
   }
-  return sanitize(copy.innerHTML);
+  const html = sanitize(copy.innerHTML);
+  return html && !/^\s*</.test(html) ? "<div>" + html + "</div>" : html;
 }
