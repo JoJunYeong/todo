@@ -18,7 +18,9 @@ import {
   waitForPendingWrites,
   terminate,
   clearIndexedDbPersistence,
+  connectFirestoreEmulator,
 } from "firebase/firestore";
+import { validateNoteImage, noteImageIds, imageId } from "./image-data.js";
 import { app } from "./auth.js";
 import {
   parseBackup,
@@ -41,6 +43,11 @@ if (import.meta.hot)
   import.meta.hot.dispose((data) => {
     data.db = db;
   });
+if (
+  import.meta.env.VITE_FIREBASE_EMULATORS === "true" &&
+  !import.meta.hot?.data.db
+)
+  connectFirestoreEmulator(db, "127.0.0.1", 18871);
 const ref = (uid, kind, id) => doc(db, "users", uid, kind, id);
 export async function ensureProfile(user) {
   const target = doc(db, "users", user.uid);
@@ -66,7 +73,11 @@ export async function ensureProfile(user) {
 export const watchProfile = (uid, next, error) =>
   onSnapshot(
     doc(db, "users", uid),
-    (s) => next(s.exists() ? { id: s.id, ...s.data() } : null),
+    { includeMetadataChanges: true },
+    (s) =>
+      next(s.exists() ? { id: s.id, ...s.data() } : null, {
+        cached: s.metadata.fromCache,
+      }),
     error,
   );
 export const watchAdmin = (uid, next) =>
@@ -109,6 +120,19 @@ export const watchTasks = (uid, next, error) =>
   );
 export const saveCalendar = (uid, calendar) =>
   setDoc(ref(uid, "calendars", calendar.id), calendar);
+export async function saveNoteImage(uid, image) {
+  validateNoteImage(image);
+  await setDoc(ref(uid, "noteImages", image.id), image);
+}
+export async function getNoteImage(uid, id) {
+  if (!imageId(id)) throw Error("이미지 ID가 올바르지 않습니다.");
+  const value = await getDoc(ref(uid, "noteImages", id));
+  if (!value.exists())
+    throw Error(
+      "이미지를 찾을 수 없어요. 백업에 이미지가 포함되어 있는지 확인해 주세요.",
+    );
+  return validateNoteImage({ ...value.data(), id: value.id });
+}
 export async function saveTask(uid, task, patch = {}) {
   const value = materialize(task, patch);
   validateTask(value);
@@ -225,12 +249,18 @@ export async function exportBackup(uid) {
     getDocsFromServer(collection(db, "users", uid, "calendars")),
     getDocsFromServer(collection(db, "users", uid, "tasks")),
   ]);
+  const values = tasks.docs.map((x) => ({ ...x.data(), id: x.id }));
+  const imageIds = [...new Set(values.flatMap((t) => noteImageIds(t.note)))];
+  const noteImages = await Promise.all(
+    imageIds.map((id) => getNoteImage(uid, id)),
+  );
   return {
     version: 1,
     source: "daynote",
     exportedAt: new Date().toISOString(),
     calendars: calendars.docs.map((x) => ({ ...x.data(), id: x.id })),
-    tasks: tasks.docs.map((x) => ({ ...x.data(), id: x.id })),
+    tasks: values,
+    ...(noteImages.length ? { noteImages } : {}),
   };
 }
 export async function importBackup(uid, input, onProgress = () => {}) {
@@ -247,10 +277,14 @@ export async function importBackup(uid, input, onProgress = () => {}) {
     getDocsFromServer(collection(db, "users", uid, "tasks")),
     getDocsFromServer(collection(db, "users", uid, "calendars")),
   ]);
+  const existingImages = data.noteImages?.length
+    ? await getDocsFromServer(collection(db, "users", uid, "noteImages"))
+    : null;
   const { entries, skipped } = planBackupImport(
     data,
     existingTasks.docs.map((d) => ({ ...d.data(), id: d.id })),
     existingCalendars.docs.map((d) => ({ ...d.data(), id: d.id })),
+    existingImages?.docs.map((d) => ({ ...d.data(), id: d.id })) || [],
   );
   const receipt = ref(uid, "imports", hash);
   await setDoc(receipt, {
@@ -260,12 +294,13 @@ export async function importBackup(uid, input, onProgress = () => {}) {
     counts: backupStats(data),
     written: 0,
   });
-  for (let i = 0; i < entries.length; i += 100) {
+  const batchSize = data.noteImages?.length ? 5 : 100;
+  for (let i = 0; i < entries.length; i += batchSize) {
     const batch = writeBatch(db);
-    for (const [kind, id, value] of entries.slice(i, i + 100))
+    for (const [kind, id, value] of entries.slice(i, i + batchSize))
       batch.set(ref(uid, kind, id), { ...value, importHash: hash });
     await batch.commit();
-    const written = Math.min(i + 100, entries.length);
+    const written = Math.min(i + batchSize, entries.length);
     onProgress({ written, total: entries.length, skipped });
     await updateDoc(receipt, { written });
   }
@@ -286,6 +321,15 @@ export async function importBackup(uid, input, onProgress = () => {}) {
     const actual = savedC.get(c.id);
     if (!matchesBackupEntry(c, actual))
       throw Error("서버에서 캘린더 대조에 실패했습니다.");
+  }
+  if (data.noteImages?.length) {
+    const images = await getDocsFromServer(
+      collection(db, "users", uid, "noteImages"),
+    );
+    const byId = new Map(images.docs.map((d) => [d.id, d.data()]));
+    for (const image of data.noteImages)
+      if (!matchesBackupEntry(image, byId.get(image.id)))
+        throw Error("서버에서 이미지 대조에 실패했습니다.");
   }
   const result = {
     hash,

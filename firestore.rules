@@ -46,6 +46,24 @@ service cloud.firestore {
           && request.resource.data.lists is list && request.resource.data.lists.size() <= 100;
         allow delete: if false;
       }
+      match /noteImages/{imageId} {
+        function validImage() {
+          let image = request.resource.data;
+          return image.keys().hasOnly(['id','contentType','data','width','height','createdAt','importHash'])
+            && image.id == imageId && imageId.matches('^[a-zA-Z0-9_-]{1,120}$')
+            && image.contentType in ['image/png','image/jpeg','image/webp']
+            && image.data is string && image.data.size() <= 660000
+            && image.data.matches('^data:' + image.contentType + ';base64,[A-Za-z0-9+/]+={0,2}$')
+            && image.width is int && image.width > 0 && image.width <= 2560
+            && image.height is int && image.height > 0 && image.height <= 2560
+            && image.createdAt is int;
+        }
+        allow read: if privateAccess(uid);
+        allow create: if privateAccess(uid) && validImage();
+        allow update: if privateAccess(uid) && validImage()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['importHash']);
+        allow delete: if false;
+      }
       match /imports/{importId} {
         allow read, create, update: if privateAccess(uid);
         allow delete: if false;

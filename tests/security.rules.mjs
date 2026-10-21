@@ -186,3 +186,54 @@ test("unknown collection names and cross-user import receipts remain private", a
     setDoc(doc(db, "users", "alice", "imports", "one"), { status: "verified" }),
   );
 });
+const capture = () => ({
+  id: "capture",
+  contentType: "image/png",
+  data: "data:image/png;base64,iVBORw0KGgo=",
+  width: 100,
+  height: 100,
+  createdAt: 1,
+});
+test("note images are private to active owners, including from administrators", async () => {
+  const db = user("alice"),
+    target = doc(db, "users", "alice", "noteImages", "capture");
+  await assertSucceeds(setDoc(target, capture()));
+  await assertSucceeds(getDoc(target));
+  for (const other of [
+    user("bob"),
+    user("admin"),
+    env.unauthenticatedContext().firestore(),
+  ])
+    await assertFails(
+      getDoc(doc(other, "users", "alice", "noteImages", "capture")),
+    );
+  await assertFails(
+    setDoc(doc(db, "users", "bob", "noteImages", "capture"), capture()),
+  );
+});
+test("image rules reject mismatched IDs, non-images, oversized data and extra fields", async () => {
+  const target = doc(user("alice"), "users", "alice", "noteImages", "capture");
+  for (const patch of [
+    { id: "other" },
+    { contentType: "image/svg+xml", data: "data:image/svg+xml;base64,AAAA" },
+    { data: "data:image/jpeg;base64,AAAA" },
+    { data: "data:image/png;base64," + "a".repeat(660000) },
+    { width: 2561 },
+    { height: 0 },
+    { privateAccess: true },
+  ])
+    await assertFails(setDoc(target, { ...capture(), ...patch }));
+});
+test("image retries preserve original bytes and suspended owners lose access", async () => {
+  const db = user("alice"),
+    target = doc(db, "users", "alice", "noteImages", "capture");
+  await assertSucceeds(setDoc(target, capture()));
+  await assertSucceeds(setDoc(target, capture()));
+  await assertSucceeds(updateDoc(target, { importHash: "backup" }));
+  await assertFails(updateDoc(target, { data: "data:image/png;base64,BBBB" }));
+  await env.withSecurityRulesDisabled((c) =>
+    updateDoc(doc(c.firestore(), "users", "alice"), { active: false }),
+  );
+  await assertFails(getDoc(target));
+  await assertFails(setDoc(target, capture()));
+});

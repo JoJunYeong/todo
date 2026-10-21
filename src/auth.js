@@ -11,12 +11,21 @@ import {
   updatePassword,
   EmailAuthProvider,
   reauthenticateWithCredential,
+  connectAuthEmulator,
 } from "firebase/auth";
 import config from "./firebase-config.json";
 import { authEmail } from "./domain.js";
 
-export const app = initializeApp(config);
+export const app = initializeApp(
+  import.meta.env.VITE_FIREBASE_EMULATORS === "true"
+    ? { ...config, projectId: "demo-daynote-ein6xs" }
+    : config,
+);
 export const auth = getAuth(app);
+if (import.meta.env.VITE_FIREBASE_EMULATORS === "true")
+  connectAuthEmulator(auth, "http://127.0.0.1:19099", {
+    disableWarnings: true,
+  });
 const persistence = setPersistence(auth, browserLocalPersistence);
 export const watchAuth = (fn) => onAuthStateChanged(auth, fn);
 export async function login(username, password) {

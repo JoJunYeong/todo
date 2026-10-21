@@ -1,4 +1,5 @@
 import rrule from "rrule/dist/es5/rrule.js";
+import { validateNoteImage, noteImageIds } from "./image-data.js";
 const { RRule, rrulestr } = rrule;
 
 export const WEEKDAYS = ["월", "화", "수", "목", "금", "토", "일"];
@@ -362,9 +363,28 @@ export function parseBackup(input) {
       ...(input.source?.includes("tweek.so") ? { importSource: "tweek" } : {}),
     };
   });
+  if (
+    input.noteImages != null &&
+    (!Array.isArray(input.noteImages) || input.noteImages.length > 10000)
+  )
+    throw Error("백업 이미지 형식이 올바르지 않습니다.");
+  const imageIds = new Set();
+  const noteImages = (input.noteImages || []).map((value) => {
+    const { importHash, ...image } = validateNoteImage(value);
+    if (imageIds.has(image.id)) throw Error("중복된 이미지 ID가 있습니다.");
+    imageIds.add(image.id);
+    return image;
+  });
+  for (const task of tasks)
+    for (const id of noteImageIds(task.note))
+      if (!imageIds.has(id))
+        throw Error(
+          "백업에 메모 이미지가 빠져 있습니다. 이미지가 포함된 전체 백업을 선택해 주세요.",
+        );
   return {
     calendars,
     tasks,
+    ...(noteImages.length ? { noteImages } : {}),
     colors: input.colors || [],
     source: input.source || "daynote",
     version: 1,
@@ -385,11 +405,17 @@ export function matchesBackupEntry(expected, actual) {
     !!actual && Object.entries(expected).every(([k, v]) => equal(v, actual[k]))
   );
 }
-export function planBackupImport(data, existingTasks, existingCalendars) {
+export function planBackupImport(
+  data,
+  existingTasks,
+  existingCalendars,
+  existingNoteImages = [],
+) {
   const entries = [];
   let skipped = 0;
   for (const [kind, values, existing] of [
     ["calendars", data.calendars, existingCalendars],
+    ["noteImages", data.noteImages || [], existingNoteImages],
     ["tasks", data.tasks, existingTasks],
   ]) {
     const saved = new Map(existing.map((item) => [item.id, item]));
@@ -410,6 +436,7 @@ export function backupStats(data) {
     notes: data.tasks.filter((t) => t.note).length,
     checklists: data.tasks.filter((t) => t.checklist?.length).length,
     calendars: data.calendars.length,
+    ...(data.noteImages?.length ? { images: data.noteImages.length } : {}),
     deleted: data.tasks.filter((t) => t.deleted).length,
   };
 }

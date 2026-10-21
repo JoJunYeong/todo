@@ -58,6 +58,14 @@ import {
 } from "./domain.js";
 import "./style.css";
 import "./planner.css";
+import {
+  readWeekPreview,
+  saveWeekPreview,
+  makeWeekPreview,
+  rememberSession,
+  hasRememberedSession,
+  previewStorage,
+} from "./preview-cache.js";
 
 const Details = lazy(() =>
   import("./panels.jsx").then((m) => ({ default: m.Details })),
@@ -68,15 +76,15 @@ const Preferences = lazy(() =>
 const Admin = lazy(() =>
   import("./panels.jsx").then((m) => ({ default: m.Admin })),
 );
-let authModule, storeModule;
+let authModule, storeModule, authLoad, storeLoad;
 const loadAuth = () =>
   authModule
     ? Promise.resolve(authModule)
-    : import("./auth.js").then((m) => (authModule = m));
+    : (authLoad ||= import("./auth.js").then((m) => (authModule = m)));
 const loadStore = () =>
   storeModule
     ? Promise.resolve(storeModule)
-    : import("./store.js").then((m) => (storeModule = m));
+    : (storeLoad ||= import("./store.js").then((m) => (storeModule = m)));
 
 export function Modal({ title, onClose, children, className = "" }) {
   const box = useRef();
@@ -92,6 +100,8 @@ export function Modal({ title, onClose, children, className = "" }) {
       20,
     );
     const key = (e) => {
+      if (box.current !== [...document.querySelectorAll(".modal")].at(-1))
+        return;
       if (e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();
@@ -341,17 +351,26 @@ function Login({ ready }) {
   );
 }
 
-function TaskCard({ task, onOpen, onToggle, onDrop, compact = false }) {
+function TaskCard({
+  task,
+  onOpen,
+  onToggle,
+  onDrop,
+  compact = false,
+  pending = false,
+}) {
   return (
     <div
       className={
         "task-card " +
         (task.done ? "is-done " : "") +
         (task.color === "black" ? "dark-task " : "") +
-        (compact ? "compact " : "")
+        (compact ? "compact " : "") +
+        (pending ? "preview-card " : "")
       }
       style={{ "--task-color": COLORS[task.color] || task.color || "#fff" }}
-      draggable
+      draggable={!pending}
+      aria-busy={pending || undefined}
       onDragStart={(e) => {
         e.dataTransfer.setData("application/daynote", task.id);
         e.dataTransfer.effectAllowed = "move";
@@ -367,11 +386,16 @@ function TaskCard({ task, onOpen, onToggle, onDrop, compact = false }) {
         role="checkbox"
         aria-checked={task.done}
         aria-label={(task.done ? "완료 취소: " : "완료: ") + task.text}
+        disabled={pending}
         onClick={() => onToggle(task)}
       >
         {task.done && <Check size={13} />}
       </button>
-      <button className="task-open" onClick={() => onOpen(task)}>
+      <button
+        className="task-open"
+        disabled={pending}
+        onClick={() => onOpen(task)}
+      >
         <span className="task-title">{task.text || "제목 없는 할 일"}</span>
         <span className="task-meta">
           {task.isoDate && (
@@ -383,7 +407,9 @@ function TaskCard({ task, onOpen, onToggle, onDrop, compact = false }) {
               })}
             </span>
           )}
-          {task.note && <FileText size={12} aria-label="메모 있음" />}
+          {(task.note || task.hasNote) && (
+            <FileText size={12} aria-label="메모 있음" />
+          )}
           {!!task.checklist?.length && (
             <span>
               <ListChecks size={13} />
@@ -426,12 +452,15 @@ function QuickAdd({ label, onAdd }) {
 }
 
 function Planner({ user, profile, isAdmin, store, notify }) {
+  const [preview] = useState(() => readWeekPreview(previewStorage(), user.uid));
   const today = dateKey(),
     [start, setStart] = useState(monday()),
     [selectedDay, setSelectedDay] = useState(today),
     [tasks, setTasks] = useState([]),
-    [calendars, setCalendars] = useState([]),
-    [calId, setCalId] = useState(profile.settings?.selectedCalendarId || ""),
+    [calendars, setCalendars] = useState(preview?.calendars || []),
+    [calId, setCalId] = useState(
+      profile.settings?.selectedCalendarId || preview?.calendarId || "",
+    ),
     [loaded, setLoaded] = useState(false),
     [sync, setSync] = useState({ cached: true, pending: false }),
     [view, setView] = useState("week"),
@@ -575,14 +604,22 @@ function Planner({ user, profile, isAdmin, store, notify }) {
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   }, [panel, activeTask, search]);
+  const previewActive =
+    !loaded && preview?.start === start && preview?.calendarId === calId;
   const calendar = calendars.find((c) => c.id === calId),
     ownTasks = useMemo(
       () => tasks.filter((t) => t.calendarId === calId),
       [tasks, calId],
     ),
-    week = useMemo(() => expandWeek(ownTasks, start), [ownTasks, start]);
+    week = useMemo(
+      () => (previewActive ? preview.tasks : expandWeek(ownTasks, start)),
+      [previewActive, preview, ownTasks, start],
+    );
   const live = useMemo(() => ownTasks.filter((t) => !t.deleted), [ownTasks]),
-    index = useMemo(() => buildSearchIndex(tasks), [tasks]);
+    index = useMemo(
+      () => (search ? buildSearchIndex(tasks) : []),
+      [tasks, !!search],
+    );
   const results = useMemo(
     () => searchTasks(index, search, { status: filter, limit: searchLimit }),
     [index, search, filter, searchLimit],
@@ -590,6 +627,18 @@ function Planner({ user, profile, isAdmin, store, notify }) {
   const days = Array.from({ length: 7 }, (_, i) => addDays(start, i)),
     completed = week.filter((t) => t.done).length,
     total = week.length;
+  useEffect(() => {
+    if (!loaded || !calId || !calendars.length) return;
+    const timer = setTimeout(
+      () =>
+        saveWeekPreview(
+          previewStorage(),
+          makeWeekPreview(user.uid, calId, start, calendars, week),
+        ),
+      200,
+    );
+    return () => clearTimeout(timer);
+  }, [loaded, user.uid, calId, start, calendars, week]);
   const run = async (fn, message) => {
     try {
       await fn();
@@ -873,11 +922,13 @@ function Planner({ user, profile, isAdmin, store, notify }) {
               <span>
                 {!online
                   ? "오프라인"
-                  : sync.pending
-                    ? "저장 중"
-                    : sync.cached
-                      ? "연결 중"
-                      : "저장됨"}
+                  : !loaded
+                    ? "연결 중"
+                    : sync.pending
+                      ? "저장 중"
+                      : sync.cached
+                        ? "연결 중"
+                        : "저장됨"}
               </span>
             </div>
             <button
@@ -1002,7 +1053,7 @@ function Planner({ user, profile, isAdmin, store, notify }) {
               {dataError}
             </div>
           )}
-          {!loaded ? (
+          {!loaded && !(previewActive && view === "week") ? (
             <div className="board-skeleton" aria-label="일정 불러오는 중">
               {days.map((d) => (
                 <div key={d}>
@@ -1086,6 +1137,7 @@ function Planner({ user, profile, isAdmin, store, notify }) {
                             key={t.id}
                             task={t}
                             onOpen={openTask}
+                            pending={!loaded}
                             onToggle={toggle}
                             onDrop={(e, b) => drop(e, day, null, b)}
                           />
@@ -1121,7 +1173,7 @@ function Planner({ user, profile, isAdmin, store, notify }) {
                   <ArrowUpRight size={12} />
                 </span>
               </div>
-              <Backlogs {...backlogProps} />
+              {loaded && <Backlogs {...backlogProps} />}
             </>
           ) : view === "someday" ? (
             <Backlogs {...backlogProps} />
@@ -1420,10 +1472,12 @@ function App() {
   useEffect(() => {
     let unsub,
       disposed = false;
+    if (hasRememberedSession(previewStorage())) loadStore().catch(() => {});
     loadAuth()
       .then((a) => {
         if (disposed) return;
         unsub = a.watchAuth((u) => {
+          rememberSession(previewStorage(), u?.uid);
           setUser(u);
           setAuthReady(true);
           if (!u) {
@@ -1448,16 +1502,39 @@ function App() {
     if (!user) return;
     let a,
       b,
-      cancelled = false;
+      cancelled = false,
+      creating = false,
+      touched = false,
+      touchTimer;
     loadStore()
-      .then(async (s) => {
-        await s.ensureProfile(user);
+      .then((s) => {
         if (cancelled) return;
         setStore(s);
         a = s.watchProfile(
           user.uid,
-          (p) => {
+          (p, meta) => {
+            if (cancelled) return;
             setProfile(p);
+            if (!p && !meta?.cached && !creating) {
+              creating = true;
+              s.ensureProfile(user).catch(
+                (e) => !cancelled && setBootError(authModule.authMessage(e)),
+              );
+            }
+            if (
+              p?.active &&
+              !touched &&
+              Date.now() - (p.lastSeenAt || 0) > 3600000
+            ) {
+              touched = true;
+              touchTimer = setTimeout(
+                () =>
+                  s
+                    .updateUser(user.uid, { lastSeenAt: Date.now() })
+                    .catch(() => {}),
+                2000,
+              );
+            }
             if (p && !p.active)
               notify(
                 "이 계정의 사용이 중지됐어요. 관리자에게 확인해 주세요.",
@@ -1473,6 +1550,7 @@ function App() {
       cancelled = true;
       a?.();
       b?.();
+      clearTimeout(touchTimer);
     };
   }, [user?.uid, notify]);
   return (
@@ -1492,6 +1570,8 @@ function App() {
             로그아웃
           </button>
         </div>
+      ) : !authReady ? (
+        <Spinner label="로그인 상태를 확인하고 있어요…" />
       ) : !user ? (
         <Login ready={authReady} />
       ) : !profile || !store ? (

@@ -1,4 +1,8 @@
 /* Planner layout: keep navigation optional and put task content first. */
+.preview-card button:disabled {
+  opacity: 1;
+  cursor: progress;
+}
 .app-layout {
   --planner-ink: #26382f;
   --planner-muted: #536359;

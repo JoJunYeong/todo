@@ -17,6 +17,37 @@
   --bg: #f8f9f6;
   --radius: 12px;
 }
+.note-editor img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 10px 0;
+  border: 1px solid #dce3dc;
+  border-radius: 6px;
+  cursor: zoom-in;
+}
+.note-editor img[data-image-error] {
+  min-height: 48px;
+  padding: 10px;
+  color: #875039;
+}
+.image-viewer {
+  width: min(1100px, calc(100vw - 24px));
+}
+.image-viewer-canvas {
+  max-height: 70dvh;
+  overflow: auto;
+  padding: 12px;
+}
+.image-viewer-canvas img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: auto;
+}
+.image-viewer-canvas.native-size img {
+  max-width: none;
+}
 * {
   box-sizing: border-box;
 }
