@@ -5,6 +5,7 @@ import {
   projectTask,
   moveOrder,
   isRestingHoliday,
+  canMoveCard,
 } from "../src/board-order.js";
 const a = { id: "a", order: 1024 },
   b = { id: "b", order: 2048 },
@@ -35,4 +36,27 @@ test("an empty holiday rests until a task exists, including hidden completed tas
   assert.equal(isRestingHoliday(["대체공휴일"], 1, 0), false);
   assert.equal(isRestingHoliday(["대체공휴일"], 0, 1), false);
   assert.equal(isRestingHoliday(null, 0, 0), false);
+});
+test("a move refuses a concurrently deleted or relocated card while preserving unrelated edits", () => {
+  const original = {
+    id: "a",
+    date: "2026-10-21",
+    calendarId: "one",
+    listId: null,
+  };
+  assert.equal(
+    canMoveCard(
+      { ...original, note: "changed in another tab", done: true },
+      original,
+    ),
+    true,
+  );
+  for (const patch of [
+    { date: "2026-10-22" },
+    { calendarId: "two" },
+    { listId: "later" },
+    { deleted: true },
+  ])
+    assert.equal(canMoveCard({ ...original, ...patch }, original), false);
+  assert.equal(canMoveCard(null, original), false);
 });

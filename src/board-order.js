@@ -34,3 +34,9 @@ export function moveOrder(peers, activeId, beforeId, now = Date.now()) {
 }
 export const isRestingHoliday = (holidayNames, scheduledCount, visibleCount) =>
   !!holidayNames?.length && scheduledCount === 0 && visibleCount === 0;
+export const canMoveCard = (current, original) =>
+  !!current &&
+  !current.deleted &&
+  current.calendarId === original.calendarId &&
+  (current.date || null) === (original.date || null) &&
+  (current.listId || null) === (original.listId || null);

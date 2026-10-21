@@ -1,6 +1,7 @@
 import React, {
   createContext,
   useContext,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -29,7 +30,11 @@ import {
   defaultAnimateLayoutChanges,
 } from "@dnd-kit/sortable";
 import { findTaskZone, projectTask } from "./board-order.js";
-import { SPRING_EASING, useReducedMotion } from "./motion.jsx";
+import {
+  SPRING_EASING,
+  useReducedMotion,
+  useRestingHeight,
+} from "./motion.jsx";
 
 const BoardContext = createContext(null);
 const ZoneContext = createContext(null);
@@ -111,6 +116,11 @@ export function BoardDragProvider({
           : closestCenter(args);
   };
   const reset = () => {
+    const start = initial.current;
+    if (start?.scope === scope) {
+      const from = findTaskZone(start.groups, start.task.id);
+      if (byId[from]?.date) onTargetDay(byId[from].date);
+    }
     activeRef.current = null;
     setActive(null);
     setProjection(null);
@@ -201,6 +211,15 @@ export function BoardDragProvider({
             setProjection(null);
             return;
           }
+          current[target] = sorted.map((task) =>
+            task.id === active.id
+              ? {
+                  ...task,
+                  date: byId[target].date || null,
+                  listId: byId[target].listId || null,
+                }
+              : task,
+          );
           setProjection(current);
           const sequence = ++operation.current;
           Promise.resolve(
@@ -210,7 +229,10 @@ export function BoardDragProvider({
               beforeId,
             }),
           )
-            .catch(() => {})
+            .catch(() => {
+              if (operation.current === sequence && byId[originalZone]?.date)
+                onTargetDay(byId[originalZone].date);
+            })
             .finally(() => {
               if (operation.current === sequence) setProjection(null);
             });
@@ -254,19 +276,32 @@ export function DragZone({
   ...props
 }) {
   const board = useContext(BoardContext);
+  const element = useRef(null);
   const current = board?.groups[id] || items;
+  const cssClass =
+    typeof className === "function" ? className(current) : className;
   const { setNodeRef, isOver } = useDroppable({
     id: "zone:" + id,
     disabled: !board?.enabled,
     data: { type: "zone", zone: id },
   });
+  const attach = useCallback(
+    (node) => {
+      element.current = node;
+      setNodeRef(node);
+    },
+    [setNodeRef],
+  );
+  useRestingHeight(
+    element,
+    !!cssClass?.split(/\s+/).includes("holiday-rest"),
+    board?.reduced,
+  );
   return (
     <Tag
       {...props}
-      ref={setNodeRef}
-      className={
-        typeof className === "function" ? className(current) : className
-      }
+      ref={attach}
+      className={cssClass}
       data-drop-zone={id}
       data-drag-over={isOver || undefined}
     >

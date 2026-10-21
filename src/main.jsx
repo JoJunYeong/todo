@@ -72,6 +72,7 @@ import {
   listZone,
   moveOrder,
   isRestingHoliday,
+  canMoveCard,
 } from "./board-order.js";
 import { useHolidays } from "./use-holidays.js";
 import { useRollover } from "./use-rollover.js";
@@ -793,8 +794,13 @@ export function Planner({ user, profile, isAdmin, store, notify }) {
     const task =
       week.find((item) => item.id === source.id) ||
       tasks.find((item) => item.id === source.id);
-    if (!task || task.deleted)
-      return Promise.reject(Error("이 할 일은 이미 변경되었어요."));
+    if (!canMoveCard(task, source)) {
+      const changed = Error(
+        "이 할 일의 위치가 다른 곳에서 변경되었어요. 다시 확인해 주세요.",
+      );
+      error(changed);
+      return Promise.reject(changed);
+    }
     const peers = date
       ? week.filter((item) => item.date === date)
       : live.filter((item) => item.listId === targetList);
