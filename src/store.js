@@ -25,6 +25,8 @@ import {
   backupStats,
   materialize,
   validateTask,
+  matchesBackupEntry,
+  planBackupImport,
 } from "./domain.js";
 
 export const db =
@@ -245,34 +247,11 @@ export async function importBackup(uid, input, onProgress = () => {}) {
     getDocsFromServer(collection(db, "users", uid, "tasks")),
     getDocsFromServer(collection(db, "users", uid, "calendars")),
   ]);
-  const taskMap = new Map(existingTasks.docs.map((d) => [d.id, d.data()])),
-    calMap = new Map(existingCalendars.docs.map((d) => [d.id, d.data()]));
-  const entries = [];
-  let skipped = 0;
-  for (const c of data.calendars) {
-    if (calMap.has(c.id)) {
-      if (calMap.get(c.id).importHash === hash) {
-        skipped++;
-        continue;
-      }
-      throw Error(
-        "같은 ID의 캘린더가 이미 있습니다. 기존 자료를 보호하기 위해 가져오기를 중단했습니다.",
-      );
-    }
-    entries.push(["calendars", c.id, { ...c, importHash: hash }]);
-  }
-  for (const t of data.tasks) {
-    if (taskMap.has(t.id)) {
-      if (taskMap.get(t.id).importHash === hash) {
-        skipped++;
-        continue;
-      }
-      throw Error(
-        "같은 ID의 항목이 이미 있습니다. 기존 자료를 보호하기 위해 가져오기를 중단했습니다.",
-      );
-    }
-    entries.push(["tasks", t.id, { ...t, importHash: hash }]);
-  }
+  const { entries, skipped } = planBackupImport(
+    data,
+    existingTasks.docs.map((d) => ({ ...d.data(), id: d.id })),
+    existingCalendars.docs.map((d) => ({ ...d.data(), id: d.id })),
+  );
   const receipt = ref(uid, "imports", hash);
   await setDoc(receipt, {
     hash,
@@ -284,7 +263,7 @@ export async function importBackup(uid, input, onProgress = () => {}) {
   for (let i = 0; i < entries.length; i += 100) {
     const batch = writeBatch(db);
     for (const [kind, id, value] of entries.slice(i, i + 100))
-      batch.set(ref(uid, kind, id), value);
+      batch.set(ref(uid, kind, id), { ...value, importHash: hash });
     await batch.commit();
     const written = Math.min(i + 100, entries.length);
     onProgress({ written, total: entries.length, skipped });
@@ -298,24 +277,14 @@ export async function importBackup(uid, input, onProgress = () => {}) {
   ]);
   const saved = new Map(savedTasks.docs.map((d) => [d.id, d.data()])),
     savedC = new Map(savedCalendars.docs.map((d) => [d.id, d.data()]));
-  const equal = (a, b) => {
-    if (a === b) return true;
-    if (!a || !b || typeof a !== "object" || typeof b !== "object")
-      return false;
-    const keys = Object.keys(a);
-    return (
-      keys.length === Object.keys(b).length &&
-      keys.every((k) => equal(a[k], b[k]))
-    );
-  };
   for (const t of data.tasks) {
     const actual = saved.get(t.id);
-    if (!actual || !Object.entries(t).every(([k, v]) => equal(v, actual[k])))
+    if (!matchesBackupEntry(t, actual))
       throw Error("서버에서 항목 대조에 실패했습니다: " + t.id);
   }
   for (const c of data.calendars) {
     const actual = savedC.get(c.id);
-    if (!actual || !Object.entries(c).every(([k, v]) => equal(v, actual[k])))
+    if (!matchesBackupEntry(c, actual))
       throw Error("서버에서 캘린더 대조에 실패했습니다.");
   }
   const result = {

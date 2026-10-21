@@ -220,6 +220,7 @@ export function Details({
               aria-checked={done}
               className={"detail-check " + (done ? "checked" : "")}
               aria-label="완료 상태 바꾸기"
+              disabled={!!task.freq && scope === "series"}
               onClick={() => setDone(!done)}
             >
               {done && <Check size={19} />}
@@ -240,6 +241,7 @@ export function Details({
               <input
                 aria-label="할 일 날짜"
                 type="date"
+                disabled={!!task.freq && scope === "series"}
                 value={date}
                 onInput={(e) => {
                   setDate(e.currentTarget.value);
@@ -256,6 +258,7 @@ export function Details({
               <span>캘린더</span>
               <select
                 aria-label="할 일 캘린더"
+                disabled={!!task.freq}
                 value={calendarId}
                 onChange={(e) => {
                   setCalendarId(e.target.value);
@@ -292,6 +295,7 @@ export function Details({
               <span>반복</span>
               <select
                 aria-label="반복 주기"
+                disabled={!!task.freq && scope === "single"}
                 value={freq}
                 onChange={(e) => setFreq(Number(e.target.value))}
               >
@@ -307,6 +311,7 @@ export function Details({
                 <span>반복 규칙</span>
                 <input
                   aria-label="사용자 지정 반복 규칙"
+                  disabled={!!task.freq && scope === "single"}
                   value={recurrence}
                   onChange={(e) => setRecurrence(e.target.value)}
                   placeholder="RRULE:FREQ=WEEKLY;BYDAY=MO,WE"
@@ -326,6 +331,13 @@ export function Details({
                   <option value="series">연결된 반복 일정 전체</option>
                 </select>
               </label>
+            )}
+            {!!task.freq && (
+              <p className="recurrence-help">
+                {scope === "single"
+                  ? "이 날짜의 일정만 바꿔요. 반복 주기를 바꾸려면 적용 범위를 전체로 선택해 주세요."
+                  : "연결된 일정의 내용과 반복 주기를 함께 바꿔요. 날짜와 완료 상태는 각 일정에서 바꿀 수 있어요."}
+              </p>
             )}
             <div className="color-field">
               <span>색상</span>
@@ -760,7 +772,7 @@ export function Preferences({
                   <ShieldCheck size={16} />
                   가져온 뒤 모든 원본 필드를 서버 데이터와 대조해요.
                 </div>
-                {progress && (
+                {progress && busy && (
                   <>
                     <progress value={progress.written} max={progress.total} />
                     <p aria-live="polite">

@@ -486,7 +486,7 @@ function Planner({ user, profile, isAdmin, store, notify }) {
     };
   }, [user.uid, store, error]);
   useEffect(() => {
-    if (!calendars.some((c) => c.id === calId))
+    if (calendars.length && !calendars.some((c) => c.id === calId))
       setCalId(calendars[0]?.id || "");
   }, [calendars, calId]);
   useEffect(() => {

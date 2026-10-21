@@ -316,17 +316,23 @@ export function parseBackup(input) {
     throw Error("Daynote 또는 Tweek 백업 JSON 파일을 선택해 주세요.");
   if (input.tasks.length > 50000)
     throw Error("한 번에 50,000개까지 가져올 수 있습니다.");
+  if (!input.calendars.length || input.calendars.length > 1000)
+    throw Error("백업에는 1~1,000개의 캘린더가 필요합니다.");
   const seen = new Set(),
     calendars = input.calendars.map((c, i) => {
       if (
         !c.id ||
         typeof c.id !== "string" ||
         c.id.includes("/") ||
-        typeof c.name !== "string"
+        c.id.length > 200 ||
+        typeof c.name !== "string" ||
+        c.name.length > 200 ||
+        (c.lists != null && (!Array.isArray(c.lists) || c.lists.length > 100))
       )
         throw Error("캘린더 형식이 올바르지 않습니다.");
+      const { importHash, ...fields } = c;
       return {
-        ...c,
+        ...fields,
         order: c.order ?? i,
         lists: (c.lists || []).map((l) => {
           if (
@@ -341,18 +347,19 @@ export function parseBackup(input) {
       };
     });
   const calIds = new Set(calendars.map((c) => c.id));
+  if (calIds.size !== calendars.length)
+    throw Error("중복된 캘린더 ID가 있습니다.");
   const tasks = input.tasks.map((t, i) => {
     validateTask(t);
     if (seen.has(t.id)) throw Error("중복된 항목 ID가 있습니다.");
     seen.add(t.id);
     if (!calIds.has(t.calendarId))
       throw Error("항목의 캘린더를 찾을 수 없습니다.");
+    const { importHash, ...fields } = t;
     return {
-      ...t,
+      ...fields,
       order: t.order ?? t.sortIndex ?? i,
-      importSource: input.source?.includes("tweek.so")
-        ? "tweek"
-        : t.importSource || "daynote",
+      ...(input.source?.includes("tweek.so") ? { importSource: "tweek" } : {}),
     };
   });
   return {
@@ -362,6 +369,40 @@ export function parseBackup(input) {
     source: input.source || "daynote",
     version: 1,
   };
+}
+export function matchesBackupEntry(expected, actual) {
+  const equal = (a, b) => {
+    if (a === b) return true;
+    if (!a || !b || typeof a !== "object" || typeof b !== "object")
+      return false;
+    const keys = Object.keys(a);
+    return (
+      keys.length === Object.keys(b).length &&
+      keys.every((k) => equal(a[k], b[k]))
+    );
+  };
+  return (
+    !!actual && Object.entries(expected).every(([k, v]) => equal(v, actual[k]))
+  );
+}
+export function planBackupImport(data, existingTasks, existingCalendars) {
+  const entries = [];
+  let skipped = 0;
+  for (const [kind, values, existing] of [
+    ["calendars", data.calendars, existingCalendars],
+    ["tasks", data.tasks, existingTasks],
+  ]) {
+    const saved = new Map(existing.map((item) => [item.id, item]));
+    for (const value of values) {
+      if (!saved.has(value.id)) entries.push([kind, value.id, value]);
+      else if (matchesBackupEntry(value, saved.get(value.id))) skipped++;
+      else
+        throw Error(
+          "같은 ID의 자료가 이미 있고 내용이 달라요. 기존 자료를 보호하기 위해 가져오기를 시작하지 않았어요.",
+        );
+    }
+  }
+  return { entries, skipped };
 }
 export function backupStats(data) {
   return {

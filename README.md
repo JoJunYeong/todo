@@ -6,6 +6,10 @@
 
 Node.js 22.12 이상에서 `npm ci`, `npm run dev`. `npm test`는 날짜·검색·반복 일정·백업 입력 검사를 실행하고 `npm run build`는 `/todo/` 경로의 정적 파일을 만든다.
 
+계정별 접근 제한과 관리자 권한은 Java 21 이상에서 `npx firebase-tools@15.34.0 emulators:exec --project demo-daynote-ein6xs --only firestore "npm run test:rules"`로 별도 검사한다. 테스트는 실제 프로젝트 데이터에 연결하지 않는다.
+
+실제 브라우저와 데이터 검증 결과는 [검증 기록](docs/VALIDATION.md)에 정리했다.
+
 ## 제공 기능
 
 - 주간 일정, 모바일 요일 선택, 태블릿 그리드, 캘린더와 날짜 없는 목록
@@ -27,3 +31,5 @@ Node.js 22.12 이상에서 `npm ci`, `npm run dev`. `npm test`는 날짜·검색
 기존 Tweek 알림 시간과 외부 캘린더 정보를 보존한다. 이 버전은 백그라운드 푸시 알림, 이메일 알림 및 외부 캘린더 양방향 동기화를 실행하지 않는다. Tweek 구독 취소나 원본 데이터 삭제는 수행하지 않는다.
 
 GitHub Pages 게시와 DB 보안 규칙 게시 상태는 각각 별도로 검증한다. 운영 게시는 배포 대상 커밋 및 묶음을 지정한 승인 이후 실행한다. 비공개 저장소의 Pages 사용 가능 여부는 소유 계정의 GitHub 요금제에 따른다. 저장소 공개 범위나 결제 요금제를 임의로 바꾸지 않는다.
+
+`npm run build` 후 `node scripts/release-manifest.mjs`로 배포 파일의 SHA-256을 확인한다. 수동 Publish Daynote 워크플로에 승인한 SHA-256을 입력해야 게시되며, 빌드 결과가 다르면 게시 전에 중단한다. 소스 푸시만으로 운영 화면을 바꾸지 않는다.

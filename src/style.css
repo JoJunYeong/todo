@@ -1007,6 +1007,7 @@ nav {
   cursor: grabbing;
 }
 .task-checkbox {
+  position: relative;
   margin-top: 3px;
   width: 12px;
   height: 12px;
@@ -1018,6 +1019,11 @@ nav {
   place-items: center;
   padding: 0;
   color: #78966a;
+}
+.task-checkbox::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
 }
 .task-checkbox:hover {
   border-color: #6d8b5e;
@@ -1033,7 +1039,7 @@ nav {
 }
 .task-title {
   line-height: 1.65;
-  font-size: 11px;
+  font-size: 12px;
   color: #717a67;
   overflow-wrap: anywhere;
   word-break: keep-all;
@@ -1450,6 +1456,13 @@ nav {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+.recurrence-help {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.7;
+  color: #72816c;
 }
 .detail-fields label {
   display: flex;
@@ -1995,7 +2008,7 @@ nav {
     padding: 15px;
   }
   .task-title {
-    font-size: 10px;
+    font-size: 11px;
   }
   .task-card {
     gap: 5px;
@@ -2019,7 +2032,7 @@ nav {
     display: none;
   }
 }
-@media (max-width: 1023px) {
+@media (max-width: 1199px) {
   .sidebar {
     width: 180px;
     min-width: 180px;
@@ -2061,7 +2074,7 @@ nav {
     font-size: 29px;
   }
   .page-heading p {
-    max-width: 210px;
+    max-width: 330px;
   }
   .week-board {
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -2096,7 +2109,7 @@ nav {
     margin-left: 5px;
   }
   .task-title {
-    font-size: 11px;
+    font-size: 12px;
   }
   .day-tasks {
     padding: 8px;
@@ -2119,7 +2132,7 @@ nav {
     height: 37px;
   }
   .search-field input {
-    font-size: 11px;
+    font-size: 16px;
   }
   .filter-button {
     min-height: 37px;
@@ -2168,6 +2181,55 @@ nav {
   }
   .board-skeleton {
     grid-template-columns: repeat(4, 1fr);
+  }
+}
+@media (max-width: 899px) {
+  .sidebar:not(.mobile-sidebar) {
+    display: none;
+  }
+  .app-content {
+    margin-left: 0;
+  }
+  .mobile-menu {
+    display: inline-flex;
+  }
+  .drawer-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: #263d2e65;
+    z-index: 60;
+    backdrop-filter: blur(2px);
+  }
+  .mobile-sidebar {
+    display: flex;
+    position: absolute;
+    width: 260px;
+    min-width: 260px;
+    padding: 30px 23px 17px;
+  }
+  .mobile-sidebar .brand {
+    font-size: 25px;
+  }
+  .mobile-sidebar .workspace-label {
+    margin-top: 40px;
+  }
+  .mobile-sidebar .sidebar-note {
+    margin-top: 30px;
+  }
+  .mobile-sidebar .sidebar-note p {
+    font-size: 11px;
+  }
+  .mobile-sidebar .sidebar-note > span {
+    font-size: 7px;
+  }
+  .mobile-sidebar .nav-item {
+    font-size: 13px;
+  }
+  .drawer-close {
+    position: absolute;
+    right: 15px;
+    top: 15px;
   }
 }
 @media (max-width: 767px) {
@@ -2259,7 +2321,7 @@ nav {
     border-radius: 9px;
   }
   .search-field input {
-    font-size: 11px;
+    font-size: 16px;
   }
   .filter-button {
     height: 39px;
@@ -2375,7 +2437,7 @@ nav {
     gap: 10px;
   }
   .quick-add input {
-    font-size: 12px;
+    font-size: 16px;
     padding: 9px 0;
   }
   .quick-add > svg {
@@ -2436,44 +2498,6 @@ nav {
   .page-footer span:last-child {
     font-size: 6px;
     letter-spacing: 0.7px;
-  }
-  .drawer-backdrop {
-    display: block;
-    position: fixed;
-    inset: 0;
-    background: #263d2e65;
-    z-index: 60;
-    backdrop-filter: blur(2px);
-  }
-  .mobile-sidebar {
-    display: flex;
-    position: absolute;
-    width: 260px;
-    min-width: 260px;
-    padding: 30px 23px 17px;
-  }
-  .mobile-sidebar .brand {
-    font-size: 25px;
-  }
-  .mobile-sidebar .workspace-label {
-    margin-top: 40px;
-  }
-  .mobile-sidebar .sidebar-note {
-    margin-top: 30px;
-  }
-  .mobile-sidebar .sidebar-note p {
-    font-size: 11px;
-  }
-  .mobile-sidebar .sidebar-note > span {
-    font-size: 7px;
-  }
-  .mobile-sidebar .nav-item {
-    font-size: 13px;
-  }
-  .drawer-close {
-    position: absolute;
-    right: 15px;
-    top: 15px;
   }
   .results-section,
   .all-tasks {
@@ -2557,7 +2581,7 @@ nav {
   }
   .detail-fields label input,
   .detail-fields label select {
-    font-size: 11px;
+    font-size: 16px;
     min-height: 34px;
   }
   .color-field {
@@ -2575,7 +2599,7 @@ nav {
     height: 20px;
   }
   .note-editor {
-    font-size: 12px;
+    font-size: 16px;
     max-height: 330px;
     padding: 12px;
   }
@@ -2696,9 +2720,15 @@ nav {
     letter-spacing: 2px;
   }
   .login-form input {
-    font-size: 14px;
+    font-size: 16px;
     background: #fff;
     min-height: 49px;
+  }
+  .settings-body input,
+  .add-checklist input,
+  .checklist-item input:not([type="checkbox"]),
+  .results-header select {
+    font-size: 16px;
   }
   .login-form label {
     font-size: 12px;

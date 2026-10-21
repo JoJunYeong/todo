@@ -12,6 +12,7 @@ import {
   expandWeek,
   parseBackup,
   materialize,
+  planBackupImport,
 } from "../src/domain.js";
 
 test("a moved recurring occurrence appears once in its destination week", () => {
@@ -242,6 +243,76 @@ test("backup preflight rejects duplicates, orphan calendars and invalid data", (
     parseBackup({ ...base, tasks: [task({ date: "2026-99-01" })] }),
   );
   assert.throws(() => parseBackup({ ...base, tasks: [task({ id: "a/b" })] }));
+  assert.throws(() => parseBackup({ ...base, calendars: [] }));
+  assert.throws(() =>
+    parseBackup({ ...base, calendars: [base.calendars[0], base.calendars[0]] }),
+  );
+});
+test("native backup can be restored and reimported despite earlier migration hashes", () => {
+  const raw = {
+    source: "daynote",
+    calendars: [
+      {
+        id: "cal",
+        name: "Backup",
+        lists: [],
+        order: 0,
+        importHash: "previous",
+      },
+    ],
+    tasks: [
+      task({
+        importHash: "previous",
+        note: "Preserve this note",
+        importSource: "tweek",
+      }),
+    ],
+  };
+  const data = parseBackup(raw);
+  const first = planBackupImport(data, [], []);
+  assert.equal(first.entries.length, 2);
+  assert.equal(data.tasks[0].note, raw.tasks[0].note);
+  assert.equal(data.tasks[0].importSource, "tweek");
+  const savedTasks = data.tasks.map((t) => ({ ...t, importHash: "new" }));
+  const savedCalendars = data.calendars.map((c) => ({
+    ...c,
+    importHash: "new",
+  }));
+  const again = planBackupImport(
+    parseBackup({ ...raw, exportedAt: "a different time" }),
+    savedTasks,
+    savedCalendars,
+  );
+  assert.equal(again.entries.length, 0);
+  assert.equal(again.skipped, 2);
+});
+test("resumed import skips intact records but refuses edited records before planning new writes", () => {
+  const data = parseBackup({
+    source: "daynote",
+    calendars: [{ id: "cal", name: "Backup" }],
+    tasks: [task(), task({ id: "second" })],
+  });
+  const partial = planBackupImport(data, [data.tasks[0]], data.calendars);
+  assert.equal(partial.entries.length, 1);
+  assert.equal(partial.entries[0][1], "second");
+  assert.throws(() =>
+    planBackupImport(
+      data,
+      [{ ...data.tasks[0], note: "User edited this" }],
+      data.calendars,
+    ),
+  );
+});
+test("native export of a task created in the app reimports without adding provenance", () => {
+  const original = task({ order: 1792550000000 });
+  const data = parseBackup({
+    source: "daynote",
+    calendars: [{ id: "cal", name: "Backup" }],
+    tasks: [original],
+  });
+  const plan = planBackupImport(data, [original], data.calendars);
+  assert.equal(plan.entries.length, 0);
+  assert.equal(plan.skipped, 2);
 });
 test("materialized occurrence retains provenance but strips UI-only state", () => {
   const x = materialize(
