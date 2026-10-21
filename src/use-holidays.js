@@ -8,10 +8,22 @@ export function useHolidays(start, online) {
   const last = Number(addDays(start, 6).slice(0, 4));
   const [byYear, setByYear] = useState({});
   const [retry, setRetry] = useState(0);
+  const [wake, setWake] = useState(0);
   const previousRetry = useRef(0);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
   const refresh = useCallback(() => setRetry((n) => n + 1), []);
+  useEffect(() => {
+    const check = () => {
+      if (document.visibilityState === "visible") setWake((n) => n + 1);
+    };
+    const timer = setInterval(check, 60 * 60 * 1000);
+    document.addEventListener("visibilitychange", check);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", check);
+    };
+  }, []);
   useEffect(() => {
     let active = true;
     const years = [...new Set([first, last])];
@@ -42,7 +54,7 @@ export function useHolidays(start, online) {
     return () => {
       active = false;
     };
-  }, [first, last, online, retry]);
+  }, [first, last, online, retry, wake]);
   const values = [...new Set([first, last])]
     .map((year) => byYear[year])
     .filter(Boolean);

@@ -672,16 +672,21 @@ function Planner({ user, profile, isAdmin, store, notify }) {
     total = week.length;
   useEffect(() => {
     if (!loaded || !calId || !calendars.length) return;
-    const timer = setTimeout(
-      () =>
-        saveWeekPreview(
-          previewStorage(),
-          makeWeekPreview(user.uid, calId, start, calendars, week),
+    const timer = setTimeout(() => {
+      const openingWeek = monday(today);
+      saveWeekPreview(
+        previewStorage(),
+        makeWeekPreview(
+          user.uid,
+          calId,
+          openingWeek,
+          calendars,
+          start === openingWeek ? week : expandWeek(ownTasks, openingWeek),
         ),
-      200,
-    );
+      );
+    }, 200);
     return () => clearTimeout(timer);
-  }, [loaded, user.uid, calId, start, calendars, week]);
+  }, [loaded, user.uid, calId, start, calendars, week, ownTasks, today]);
   useEffect(() => {
     if (!loaded) return;
     if (window.requestIdleCallback) {
