@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env*
+!.env.example
+.DS_Store
+coverage/
+*.log
+.firebase/
+private/
+backups/
+exports/
+*.local.*

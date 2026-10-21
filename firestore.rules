@@ -1,0 +1,56 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function own(uid) { return signedIn() && request.auth.uid == uid; }
+    function active(uid) { return get(/databases/$(database)/documents/users/$(uid)).data.active == true; }
+    function admin() { return signedIn() && active(request.auth.uid) && exists(/databases/$(database)/documents/admins/$(request.auth.uid)); }
+    function privateAccess(uid) { return own(uid) && active(uid); }
+    match /admins/{uid} {
+      allow get: if own(uid);
+      allow list, write: if false;
+    }
+    match /users/{uid} {
+      allow get: if own(uid) || admin();
+      allow list: if admin();
+      allow create: if own(uid)
+        && request.resource.data.keys().hasOnly(['username','displayName','active','createdAt','lastSeenAt','settings'])
+        && request.resource.data.username is string
+        && request.resource.data.username.matches('^[a-z0-9][a-z0-9_-]{2,31}$')
+        && request.auth.token.email == request.resource.data.username + '@users.daynote.invalid'
+        && request.resource.data.active == true
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() <= 100;
+      allow update: if (own(uid) && active(uid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName','settings','lastSeenAt'])
+        && request.resource.data.displayName is string && request.resource.data.displayName.size() <= 100)
+        || (admin() && uid != request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['active','displayName'])
+        && request.resource.data.active is bool);
+      allow delete: if false;
+      match /tasks/{taskId} {
+        allow read: if privateAccess(uid);
+        allow create, update: if privateAccess(uid)
+          && request.resource.data.id == taskId
+          && request.resource.data.text is string && request.resource.data.text.size() <= 10000
+          && request.resource.data.done is bool
+          && request.resource.data.calendarId is string
+          && (!('note' in request.resource.data) || request.resource.data.note == null || (request.resource.data.note is string && request.resource.data.note.size() <= 800000));
+        allow delete: if false;
+      }
+      match /calendars/{calendarId} {
+        allow read: if privateAccess(uid);
+        allow create, update: if privateAccess(uid)
+          && request.resource.data.id == calendarId
+          && request.resource.data.name is string && request.resource.data.name.size() <= 200
+          && request.resource.data.lists is list && request.resource.data.lists.size() <= 100;
+        allow delete: if false;
+      }
+      match /imports/{importId} {
+        allow read, create, update: if privateAccess(uid);
+        allow delete: if false;
+      }
+    }
+    match /{document=**} { allow read, write: if false; }
+  }
+}
