@@ -32,4 +32,8 @@ Node.js 22.12 이상에서 `npm ci`, `npm run dev`. `npm test`는 날짜·검색
 
 GitHub Pages 게시와 DB 보안 규칙 게시 상태는 각각 별도로 검증한다. 운영 게시는 배포 대상 커밋 및 묶음을 지정한 승인 이후 실행한다. 비공개 저장소의 Pages 사용 가능 여부는 소유 계정의 GitHub 요금제에 따른다. 저장소 공개 범위나 결제 요금제를 임의로 바꾸지 않는다.
 
-`npm run build` 후 `node scripts/release-manifest.mjs`로 배포 파일의 SHA-256을 확인한다. 수동 Publish Daynote 워크플로에 승인한 SHA-256을 입력해야 게시되며, 빌드 결과가 다르면 게시 전에 중단한다. 소스 푸시만으로 운영 화면을 바꾸지 않는다.
+현재 주소는 <https://jojunyeong.github.io/todo/>이며 Pages 게시 원본은 `gh-pages` 브랜치의 `/`다. GitHub 계정의 결제 문제로 일반 Actions 작업이 시작되지 않아, 로컬에서 검증한 정적 파일을 이 브랜치에 올리고 GitHub의 Pages 전용 배포로 게시했다. 결제 설정은 변경하지 않았다. `main`의 소스 푸시만으로 운영 화면을 바꾸지 않는다.
+
+다음 게시도 먼저 `npm run build` 후 `node scripts/release-manifest.mjs`로 배포 파일의 SHA-256을 확인하고, 승인한 파일만 게시 브랜치에 반영한다. 소스나 개인 백업을 게시 브랜치에 넣지 않는다. 빌드 결과가 승인본과 다르면 게시하지 않는다.
+
+일반 Actions를 다시 사용할 수 있게 되면 Pages의 게시 방식을 GitHub Actions로 바꾸고 수동 Publish Daynote 워크플로를 사용할 수 있다. 이 워크플로는 승인한 SHA-256을 입력받아 빌드 결과가 다르면 게시 전에 중단한다.
