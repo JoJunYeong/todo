@@ -1,0 +1,284 @@
+:root {
+  --motion-spring: cubic-bezier(0.22, 1.18, 0.36, 1);
+  --motion-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+.motion-presence {
+  display: contents;
+}
+.modal-backdrop {
+  animation: scrim-in 180ms ease-out both;
+}
+.modal-backdrop > .modal {
+  transform-origin: 50% 65%;
+  animation: sheet-in 320ms var(--motion-spring) both;
+}
+.motion-presence[data-exiting] .modal-backdrop {
+  animation: scrim-out 170ms ease-in both;
+  pointer-events: none;
+}
+.motion-presence[data-exiting] .modal {
+  animation: sheet-out 170ms ease-in both;
+}
+.app-layout > .sidebar {
+  animation: sidebar-in 320ms var(--motion-spring) both;
+}
+.app-layout > .sidebar[data-exiting] {
+  display: flex;
+  animation: sidebar-out 170ms ease-in both;
+  pointer-events: none;
+}
+.sidebar-scrim {
+  animation: scrim-in 180ms ease-out both;
+}
+.sidebar-scrim[data-exiting] {
+  animation: scrim-out 170ms ease-in both;
+  pointer-events: none;
+}
+.app-content {
+  transition: margin-left 280ms var(--motion-out);
+}
+.week-board,
+.results-section {
+  animation: board-in 240ms var(--motion-out) both;
+}
+.task-card {
+  position: relative;
+}
+.task-open {
+  transition: transform 120ms ease-out;
+}
+.task-open:active {
+  transform: scale(0.985);
+}
+.task-checkbox {
+  transition:
+    transform 180ms var(--motion-spring),
+    background-color 180ms ease,
+    border-color 180ms ease;
+}
+.task-checkbox:active {
+  transform: scale(0.84);
+}
+.is-done .task-checkbox svg {
+  animation: check-in 240ms var(--motion-spring) both;
+}
+.icon-button,
+.primary,
+.secondary,
+.mobile-day-picker button,
+.nav-item {
+  transition:
+    transform 180ms var(--motion-spring),
+    background-color 160ms ease,
+    color 160ms ease;
+}
+.icon-button:active,
+.primary:active,
+.secondary:active,
+.mobile-day-picker button:active,
+.nav-item:active {
+  transform: scale(0.95);
+}
+.task-drag-handle {
+  flex: none;
+  width: 24px;
+  min-height: 32px;
+  align-self: stretch;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  margin-right: -4px;
+  border-radius: 5px;
+  color: #728175;
+  touch-action: none;
+  cursor: grab;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+.task-drag-handle:disabled {
+  cursor: progress;
+  opacity: 0.4;
+}
+.task-drag-handle:active {
+  cursor: grabbing;
+  background: #e8eee8;
+}
+.task-card.is-dragging {
+  opacity: 0.26;
+  border-style: dashed;
+  box-shadow: none;
+}
+.drag-lift {
+  cursor: grabbing;
+  transform: rotate(-0.8deg) scale(1.035);
+  transform-origin: 50% 50%;
+  animation: lift-in 180ms var(--motion-spring) both;
+}
+.drag-lift .task-card {
+  margin: 0;
+  opacity: 1;
+  background: var(--task-color, #fff);
+  box-shadow:
+    0 18px 36px #1e382e26,
+    0 3px 9px #1e382e1c;
+  border-color: #bdcebf;
+}
+.drag-lift .task-open {
+  transform: none;
+}
+[data-drop-zone][data-drag-over],
+.mobile-day-picker button[data-drag-over] {
+  outline: 2px solid #83aa8e;
+  outline-offset: -2px;
+}
+.day-column {
+  transition: background-color 200ms ease;
+}
+.week-board .day-column.holiday-rest {
+  align-self: start;
+  min-height: 0 !important;
+  background: #edf0ee;
+  border-bottom: 1px solid #dce1dd;
+}
+.holiday-rest .day-heading {
+  background: #edf0ee;
+  border-color: #d8dfd9;
+}
+.holiday-rest .day-date-row > span {
+  color: #68736b;
+}
+.holiday-rest .day-tasks {
+  flex: none;
+  padding-top: 3px;
+  padding-bottom: 8px;
+}
+.holiday-rest .day-empty {
+  padding: 5px 6px 8px;
+  color: #67756b;
+  font-size: 11px;
+}
+.holiday-rest .quick-add input::placeholder {
+  color: #5f7164;
+}
+.holiday-rest .quick-add {
+  color: #5f7164;
+}
+.holiday-rest:focus-within {
+  background: #e8eee9;
+}
+@media (max-width: 767px) {
+  .task-drag-handle {
+    width: 44px;
+    min-height: 44px;
+  }
+}
+.toast {
+  animation: toast-in 300ms var(--motion-spring) both;
+}
+@media (hover: hover) and (pointer: fine) {
+  .task-drag-handle {
+    opacity: 0.45;
+    transition:
+      opacity 160ms ease,
+      background-color 160ms ease;
+  }
+  .task-card:hover .task-drag-handle,
+  .task-drag-handle:focus-visible {
+    opacity: 1;
+  }
+}
+@keyframes sheet-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 18px, 0) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes sheet-out {
+  to {
+    opacity: 0;
+    transform: translate3d(0, 12px, 0) scale(0.98);
+  }
+}
+@keyframes scrim-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes scrim-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes sidebar-in {
+  from {
+    transform: translate3d(-100%, 0, 0);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes sidebar-out {
+  to {
+    transform: translate3d(-100%, 0, 0);
+  }
+}
+@keyframes board-in {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 5px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes lift-in {
+  from {
+    transform: rotate(0) scale(1);
+  }
+  to {
+    transform: rotate(-0.8deg) scale(1.035);
+  }
+}
+@keyframes check-in {
+  from {
+    opacity: 0;
+    transform: scale(0.55);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    translate: 0 9px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .drag-lift {
+    animation: none !important;
+    transform: none !important;
+  }
+}

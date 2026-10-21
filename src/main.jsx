@@ -43,6 +43,7 @@ import {
   Leaf,
   LayoutGrid,
   CheckCircle2,
+  GripVertical,
 } from "lucide-react";
 import {
   dateKey,
@@ -58,6 +59,20 @@ import {
 } from "./domain.js";
 import "./style.css";
 import "./planner.css";
+import "./motion.css";
+import {
+  BoardDragProvider,
+  DragZone,
+  DayDropTab,
+  SortableCard,
+} from "./drag-board.jsx";
+import { MotionPresence, usePresence } from "./motion.jsx";
+import {
+  dayZone,
+  listZone,
+  moveOrder,
+  isRestingHoliday,
+} from "./board-order.js";
 import { useHolidays } from "./use-holidays.js";
 import { useRollover } from "./use-rollover.js";
 import {
@@ -364,75 +379,85 @@ function TaskCard({
   task,
   onOpen,
   onToggle,
-  onDrop,
   compact = false,
   pending = false,
+  overlay = false,
 }) {
   return (
-    <div
-      className={
-        "task-card " +
-        (task.done ? "is-done " : "") +
-        (task.color === "black" ? "dark-task " : "") +
-        (compact ? "compact " : "") +
-        (pending ? "preview-card " : "")
-      }
-      style={{ "--task-color": COLORS[task.color] || task.color || "#fff" }}
-      draggable={!pending}
-      aria-busy={pending || undefined}
-      onDragStart={(e) => {
-        e.dataTransfer.setData("application/daynote", task.id);
-        e.dataTransfer.effectAllowed = "move";
-      }}
-      onDragOver={(e) => e.preventDefault()}
-      onDrop={(e) => {
-        e.stopPropagation();
-        onDrop?.(e, task);
-      }}
-    >
-      <button
-        className="task-checkbox"
-        role="checkbox"
-        aria-checked={task.done}
-        aria-label={(task.done ? "완료 취소: " : "완료: ") + task.text}
-        disabled={pending}
-        onClick={() => onToggle(task)}
-      >
-        {task.done && <Check size={13} />}
-      </button>
-      <button
-        className="task-open"
-        onPointerEnter={warmDetails}
-        onPointerDown={warmDetails}
-        onFocus={warmDetails}
-        disabled={pending}
-        onClick={() => onOpen(task)}
-      >
-        <span className="task-title">{task.text || "제목 없는 할 일"}</span>
-        <span className="task-meta">
-          {task.isoDate && (
-            <span>
-              {new Date(task.isoDate).toLocaleTimeString("ko-KR", {
-                hour: "2-digit",
-                minute: "2-digit",
-                hour12: false,
-              })}
+    <SortableCard task={task} pending={pending} overlay={overlay}>
+      {({ ref, style, handle, isDragging }) => (
+        <div
+          ref={ref}
+          data-task-id={task.id}
+          className={
+            "task-card " +
+            (task.done ? "is-done " : "") +
+            (task.color === "black" ? "dark-task " : "") +
+            (compact ? "compact " : "") +
+            (pending ? "preview-card " : "") +
+            (isDragging ? "is-dragging " : "")
+          }
+          style={{
+            "--task-color": COLORS[task.color] || task.color || "#fff",
+            ...style,
+          }}
+          aria-busy={pending || undefined}
+        >
+          <button
+            className="task-checkbox"
+            role="checkbox"
+            aria-checked={task.done}
+            aria-label={(task.done ? "완료 취소: " : "완료: ") + task.text}
+            disabled={pending}
+            onClick={() => onToggle(task)}
+          >
+            {task.done && <Check size={13} />}
+          </button>
+          <button
+            className="task-open"
+            onPointerEnter={warmDetails}
+            onPointerDown={warmDetails}
+            onFocus={warmDetails}
+            disabled={pending}
+            onClick={() => onOpen(task)}
+          >
+            <span className="task-title">{task.text || "제목 없는 할 일"}</span>
+            <span className="task-meta">
+              {task.isoDate && (
+                <span>
+                  {new Date(task.isoDate).toLocaleTimeString("ko-KR", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    hour12: false,
+                  })}
+                </span>
+              )}
+              {(task.note || task.hasNote) && (
+                <FileText size={12} aria-label="메모 있음" />
+              )}
+              {!!task.checklist?.length && (
+                <span>
+                  <ListChecks size={13} />
+                  {task.checklist.filter((x) => x.done).length}/
+                  {task.checklist.length}
+                </span>
+              )}
+              {!!task.freq && <Repeat2 size={12} aria-label="반복 일정" />}
             </span>
+          </button>
+          {handle && (
+            <button
+              {...handle}
+              className="task-drag-handle"
+              aria-label={"할 일 옮기기: " + task.text}
+              title="끌어서 이동 · 스페이스 키로 이동 시작"
+            >
+              <GripVertical size={16} />
+            </button>
           )}
-          {(task.note || task.hasNote) && (
-            <FileText size={12} aria-label="메모 있음" />
-          )}
-          {!!task.checklist?.length && (
-            <span>
-              <ListChecks size={13} />
-              {task.checklist.filter((x) => x.done).length}/
-              {task.checklist.length}
-            </span>
-          )}
-          {!!task.freq && <Repeat2 size={12} aria-label="반복 일정" />}
-        </span>
-      </button>
-    </div>
+        </div>
+      )}
+    </SortableCard>
   );
 }
 function QuickAdd({ label, onAdd }) {
@@ -463,7 +488,7 @@ function QuickAdd({ label, onAdd }) {
   );
 }
 
-function Planner({ user, profile, isAdmin, store, notify }) {
+export function Planner({ user, profile, isAdmin, store, notify }) {
   const [preview] = useState(() => readWeekPreview(previewStorage(), user.uid));
   const [today, setToday] = useState(dateKey);
   const [start, setStart] = useState(monday()),
@@ -487,6 +512,7 @@ function Planner({ user, profile, isAdmin, store, notify }) {
       !!profile.settings?.hideCompleted,
     ),
     [searchLimit, setSearchLimit] = useState(60);
+  const sidebarPresent = usePresence(sidebarOpen);
   const holidays = useHolidays(start, online);
   const rolloverError = useRollover({
     uid: user.uid,
@@ -582,7 +608,7 @@ function Planner({ user, profile, isAdmin, store, notify }) {
           ? "접근 권한을 확인할 수 없습니다. 계정 상태를 확인해 주세요."
           : e.message,
       );
-      notify(authModule.authMessage(e), "error");
+      notify(authModule?.authMessage(e) || e.message, "error");
     },
     [notify],
   );
@@ -630,6 +656,7 @@ function Planner({ user, profile, isAdmin, store, notify }) {
   }, []);
   useEffect(() => {
     const key = (e) => {
+      if (e.defaultPrevented) return;
       if ((e.metaKey || e.ctrlKey) && e.key === "k" && !panel && !activeTask) {
         e.preventDefault();
         setSidebarOpen(false);
@@ -670,6 +697,34 @@ function Planner({ user, profile, isAdmin, store, notify }) {
   const days = Array.from({ length: 7 }, (_, i) => addDays(start, i)),
     completed = week.filter((t) => t.done).length,
     total = week.length;
+  const dragZones = useMemo(
+    () => [
+      ...Array.from({ length: 7 }, (_, i) => {
+        const date = addDays(start, i);
+        return {
+          id: dayZone(date),
+          date,
+          label: date,
+          items: week
+            .filter(
+              (task) => task.date === date && (!hideCompleted || !task.done),
+            )
+            .sort((a, b) => (a.order || 0) - (b.order || 0)),
+        };
+      }),
+      ...(calendar?.lists || []).map((list) => ({
+        id: listZone(list.id),
+        listId: list.id,
+        label: list.name,
+        items: live
+          .filter(
+            (task) => task.listId === list.id && (!hideCompleted || !task.done),
+          )
+          .sort((a, b) => (a.order || 0) - (b.order || 0)),
+      })),
+    ],
+    [start, week, calendar, live, hideCompleted],
+  );
   useEffect(() => {
     if (!loaded || !calId || !calendars.length) return;
     const timer = setTimeout(() => {
@@ -720,7 +775,6 @@ function Planner({ user, profile, isAdmin, store, notify }) {
     uid: user.uid,
     store,
     run,
-    drop,
     openTask,
     toggle,
     newTask,
@@ -735,27 +789,27 @@ function Planner({ user, profile, isAdmin, store, notify }) {
     setStart(next);
     setSelectedDay(addDays(selectedDay, n * 7));
   };
-  function drop(event, date, listId = null, before = null) {
-    event.preventDefault();
-    const id = event.dataTransfer.getData("application/daynote"),
-      task = week.find((t) => t.id === id) || tasks.find((t) => t.id === id);
-    if (!task || task.id === before?.id) return;
-    const peers = (
-      date
-        ? week.filter((t) => t.date === date)
-        : live.filter((t) => t.listId === listId)
-    ).sort((a, b) => (a.order || 0) - (b.order || 0));
-    const at = before
-      ? peers.findIndex((t) => t.id === before.id)
-      : peers.length;
-    const order =
-      at === 0
-        ? (peers[0]?.order || 0) - 1024
-        : at === peers.length
-          ? (peers.at(-1)?.order || Date.now()) + 1024
-          : ((peers[at - 1].order || 0) + (peers[at].order || 0)) / 2;
-    run(() => store.patchTask(user.uid, task, { date, listId, order }));
-  }
+  const moveCard = (source, { date, listId: targetList, beforeId }) => {
+    const task =
+      week.find((item) => item.id === source.id) ||
+      tasks.find((item) => item.id === source.id);
+    if (!task || task.deleted)
+      return Promise.reject(Error("이 할 일은 이미 변경되었어요."));
+    const peers = date
+      ? week.filter((item) => item.date === date)
+      : live.filter((item) => item.listId === targetList);
+    return store
+      .patchTask(user.uid, task, {
+        date,
+        listId: targetList,
+        order: moveOrder(peers, task.id, beforeId),
+      })
+      .then(() => setDataError(""))
+      .catch((e) => {
+        error(e);
+        throw e;
+      });
+  };
   const logout = async () => {
     if (
       sync.pending &&
@@ -906,565 +960,606 @@ function Planner({ user, profile, isAdmin, store, notify }) {
     </>
   );
   return (
-    <div className={"app-layout" + (sidebarOpen ? " sidebar-open" : "")}>
-      {sidebarOpen && (
-        <>
-          <button
-            className="sidebar-scrim"
-            aria-label="사이드바 바깥에서 닫기"
-            tabIndex={-1}
-            onClick={() => setSidebarOpen(false)}
-          />
-          <aside
-            className="sidebar"
-            id="workspace-sidebar"
-            aria-label="작업 공간 메뉴"
-            ref={sidebarRef}
-          >
-            {sidebar}
-          </aside>
-        </>
-      )}
-      <div className="app-content" ref={contentRef}>
-        <header className="topbar">
-          <div className="topbar-left">
+    <BoardDragProvider
+      zones={dragZones}
+      scope={calId + ":" + start + ":" + view}
+      enabled={loaded && !activeTask && !panel}
+      onMove={moveCard}
+      onTargetDay={setSelectedDay}
+      renderOverlay={(task) => <TaskCard task={task} overlay />}
+    >
+      <div className={"app-layout" + (sidebarOpen ? " sidebar-open" : "")}>
+        {sidebarPresent && (
+          <>
             <button
-              ref={sidebarToggle}
-              className="icon-button sidebar-toggle"
-              aria-label={sidebarOpen ? "사이드바 접기" : "사이드바 펼치기"}
-              aria-expanded={sidebarOpen}
-              aria-controls="workspace-sidebar"
-              onClick={() => setSidebarOpen((open) => !open)}
+              className="sidebar-scrim"
+              data-exiting={!sidebarOpen || undefined}
+              inert={!sidebarOpen || undefined}
+              aria-label="사이드바 바깥에서 닫기"
+              tabIndex={-1}
+              onClick={() => setSidebarOpen(false)}
+            />
+            <aside
+              className="sidebar"
+              id="workspace-sidebar"
+              aria-label="작업 공간 메뉴"
+              ref={sidebarRef}
+              data-exiting={!sidebarOpen || undefined}
+              aria-hidden={!sidebarOpen || undefined}
+              inert={!sidebarOpen || undefined}
             >
-              <Menu size={21} />
-            </button>
-            <h1 className="view-title">{viewTitle}</h1>
-            <button
-              className="calendar-switch"
-              onClick={() => setSidebarOpen(true)}
-              aria-label={"캘린더 선택: " + (calendar?.name || "나의 캘린더")}
-            >
-              <span>{calendar?.name || "나의 캘린더"}</span>
-              <ChevronDown size={13} />
-            </button>
-          </div>
-          <div className="topbar-right">
-            {view === "week" && (
-              <span
-                className="completion-summary"
-                aria-label={`이번 주 ${total}개 중 ${completed}개 완료`}
-              >
-                {completed}/{total} 완료
-              </span>
-            )}
-            <div
-              className={"sync-status " + (!online ? "offline" : "")}
-              title={
-                !online
-                  ? "인터넷이 연결되면 저장 내용을 동기화해요."
-                  : sync.pending
-                    ? "서버에 변경사항을 저장하고 있어요."
-                    : sync.cached
-                      ? "저장된 내용을 표시하고 서버와 연결하고 있어요."
-                      : "서버에 저장됐어요."
-              }
-            >
-              {!online ? (
-                <CloudOff size={15} />
-              ) : sync.pending ? (
-                <Loader2 size={15} className="spin" />
-              ) : (
-                <Cloud size={15} />
-              )}
-              <span>
-                {!online
-                  ? "오프라인"
-                  : !loaded
-                    ? "연결 중"
-                    : sync.pending
-                      ? "저장 중"
-                      : sync.cached
-                        ? "연결 중"
-                        : "저장됨"}
-              </span>
-            </div>
-            <button
-              className="avatar top-avatar"
-              aria-label="계정 설정"
-              onClick={() => setPanel("settings")}
-            >
-              {profile.displayName.slice(0, 1)}
-            </button>
-          </div>
-        </header>
-        <main className="main-content">
-          <section className="toolbar">
-            <div className="week-controls">
+              {sidebar}
+            </aside>
+          </>
+        )}
+        <div className="app-content" ref={contentRef}>
+          <header className="topbar">
+            <div className="topbar-left">
               <button
-                className="period-label"
-                onClick={() =>
-                  document.getElementById("date-picker").showPicker?.()
+                ref={sidebarToggle}
+                className="icon-button sidebar-toggle"
+                aria-label={sidebarOpen ? "사이드바 접기" : "사이드바 펼치기"}
+                aria-expanded={sidebarOpen}
+                aria-controls="workspace-sidebar"
+                onClick={() => setSidebarOpen((open) => !open)}
+              >
+                <Menu size={21} />
+              </button>
+              <h1 className="view-title">{viewTitle}</h1>
+              <button
+                className="calendar-switch"
+                onClick={() => setSidebarOpen(true)}
+                aria-label={"캘린더 선택: " + (calendar?.name || "나의 캘린더")}
+              >
+                <span>{calendar?.name || "나의 캘린더"}</span>
+                <ChevronDown size={13} />
+              </button>
+            </div>
+            <div className="topbar-right">
+              {view === "week" && (
+                <span
+                  className="completion-summary"
+                  aria-label={`이번 주 ${total}개 중 ${completed}개 완료`}
+                >
+                  {completed}/{total} 완료
+                </span>
+              )}
+              <div
+                className={"sync-status " + (!online ? "offline" : "")}
+                title={
+                  !online
+                    ? "인터넷이 연결되면 저장 내용을 동기화해요."
+                    : sync.pending
+                      ? "서버에 변경사항을 저장하고 있어요."
+                      : sync.cached
+                        ? "저장된 내용을 표시하고 서버와 연결하고 있어요."
+                        : "서버에 저장됐어요."
                 }
               >
-                <CalendarDays size={18} />
+                {!online ? (
+                  <CloudOff size={15} />
+                ) : sync.pending ? (
+                  <Loader2 size={15} className="spin" />
+                ) : (
+                  <Cloud size={15} />
+                )}
                 <span>
-                  {new Date(start + "T12:00:00").toLocaleDateString("ko-KR", {
-                    year: "numeric",
-                    month: "long",
-                  })}
+                  {!online
+                    ? "오프라인"
+                    : !loaded
+                      ? "연결 중"
+                      : sync.pending
+                        ? "저장 중"
+                        : sync.cached
+                          ? "연결 중"
+                          : "저장됨"}
                 </span>
-                <ChevronDown size={15} />
-                <input
-                  id="date-picker"
-                  type="date"
-                  aria-label="날짜로 이동"
-                  value={start}
-                  onChange={(e) => {
-                    if (e.target.value) {
-                      setStart(monday(e.target.value));
-                      setSelectedDay(e.target.value);
-                      setView("week");
-                    }
-                  }}
-                />
-              </button>
-              <div className="week-arrows">
-                <button
-                  className="icon-button"
-                  aria-label="이전 주"
-                  onClick={() => moveWeek(-1)}
-                >
-                  <ChevronLeft size={18} />
-                </button>
-                <button
-                  className="today-button"
-                  onClick={() => {
-                    setStart(monday());
-                    setSelectedDay(today);
-                    setView("week");
-                  }}
-                >
-                  오늘
-                </button>
-                <button
-                  className="icon-button"
-                  aria-label="다음 주"
-                  onClick={() => moveWeek(1)}
-                >
-                  <ChevronRight size={18} />
-                </button>
               </div>
+              <button
+                className="avatar top-avatar"
+                aria-label="계정 설정"
+                onClick={() => setPanel("settings")}
+              >
+                {profile.displayName.slice(0, 1)}
+              </button>
             </div>
-            <div className="toolbar-actions">
-              <div className="search-field">
-                <Search size={16} />
-                <input
-                  ref={inputSearch}
-                  aria-label="전체 일정 검색"
-                  placeholder="일정·메모 검색"
-                  value={search}
-                  onChange={(e) => {
-                    setSearch(e.target.value);
-                    setSearchLimit(60);
-                    setView(e.target.value ? "search" : "week");
-                  }}
-                />
-                <kbd>⌘ K</kbd>
-                {search && (
+          </header>
+          <main className="main-content">
+            <section className="toolbar">
+              <div className="week-controls">
+                <button
+                  className="period-label"
+                  onClick={() =>
+                    document.getElementById("date-picker").showPicker?.()
+                  }
+                >
+                  <CalendarDays size={18} />
+                  <span>
+                    {new Date(start + "T12:00:00").toLocaleDateString("ko-KR", {
+                      year: "numeric",
+                      month: "long",
+                    })}
+                  </span>
+                  <ChevronDown size={15} />
+                  <input
+                    id="date-picker"
+                    type="date"
+                    aria-label="날짜로 이동"
+                    value={start}
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        setStart(monday(e.target.value));
+                        setSelectedDay(e.target.value);
+                        setView("week");
+                      }
+                    }}
+                  />
+                </button>
+                <div className="week-arrows">
                   <button
-                    className="icon-button small"
-                    aria-label="검색 지우기"
+                    className="icon-button"
+                    aria-label="이전 주"
+                    onClick={() => moveWeek(-1)}
+                  >
+                    <ChevronLeft size={18} />
+                  </button>
+                  <button
+                    className="today-button"
                     onClick={() => {
-                      setSearch("");
+                      setStart(monday());
+                      setSelectedDay(today);
                       setView("week");
                     }}
                   >
-                    <X size={14} />
+                    오늘
                   </button>
-                )}
-              </div>
-              <button
-                className={"filter-button " + (hideCompleted ? "enabled" : "")}
-                onClick={() => {
-                  const next = !hideCompleted;
-                  setHideCompleted(next);
-                  run(() =>
-                    store.updateUser(user.uid, {
-                      "settings.hideCompleted": next,
-                    }),
-                  );
-                }}
-                aria-label={
-                  hideCompleted ? "완료 항목 표시" : "완료 항목 숨기기"
-                }
-                aria-pressed={hideCompleted}
-                title={hideCompleted ? "완료 항목 표시" : "완료 항목 숨기기"}
-              >
-                <SlidersHorizontal size={17} />
-                <span>{hideCompleted ? "미완료만" : "완료 포함"}</span>
-              </button>
-            </div>
-          </section>
-          {dataError && (
-            <div role="alert" className="form-error">
-              {dataError}
-            </div>
-          )}
-          {rolloverError && (
-            <div role="status" className="form-error">
-              {rolloverError}
-            </div>
-          )}
-          {!loaded && !(previewActive && view === "week") ? (
-            <div className="board-skeleton" aria-label="일정 불러오는 중">
-              {days.map((d) => (
-                <div key={d}>
-                  <span />
-                  <i />
-                  <i />
-                  <i />
-                </div>
-              ))}
-            </div>
-          ) : view === "week" ? (
-            <>
-              <div
-                className="mobile-day-picker"
-                role="tablist"
-                aria-label="요일 선택"
-              >
-                {days.map((d, i) => (
                   <button
-                    role="tab"
-                    aria-selected={selectedDay === d}
-                    key={d}
-                    className={
-                      (selectedDay === d ? "chosen " : "") +
-                      (d === today ? "is-today " : "") +
-                      (holidays.days[d] ? "is-holiday" : "")
-                    }
-                    aria-label={`${d} ${WEEKDAYS[i]}요일${holidays.days[d] ? " · " + holidays.days[d].join(" · ") : ""}`}
-                    title={holidays.days[d]?.join(" · ")}
-                    onClick={() => setSelectedDay(d)}
+                    className="icon-button"
+                    aria-label="다음 주"
+                    onClick={() => moveWeek(1)}
                   >
-                    <span>{WEEKDAYS[i]}</span>
-                    <strong>{Number(d.slice(-2))}</strong>
-                    <i
-                      className={
-                        week.some((t) => t.date === d && !t.done)
-                          ? "has-tasks"
-                          : ""
-                      }
-                    />
+                    <ChevronRight size={18} />
                   </button>
+                </div>
+              </div>
+              <div className="toolbar-actions">
+                <div className="search-field">
+                  <Search size={16} />
+                  <input
+                    ref={inputSearch}
+                    aria-label="전체 일정 검색"
+                    placeholder="일정·메모 검색"
+                    value={search}
+                    onChange={(e) => {
+                      setSearch(e.target.value);
+                      setSearchLimit(60);
+                      setView(e.target.value ? "search" : "week");
+                    }}
+                  />
+                  <kbd>⌘ K</kbd>
+                  {search && (
+                    <button
+                      className="icon-button small"
+                      aria-label="검색 지우기"
+                      onClick={() => {
+                        setSearch("");
+                        setView("week");
+                      }}
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+                <button
+                  className={
+                    "filter-button " + (hideCompleted ? "enabled" : "")
+                  }
+                  onClick={() => {
+                    const next = !hideCompleted;
+                    setHideCompleted(next);
+                    run(() =>
+                      store.updateUser(user.uid, {
+                        "settings.hideCompleted": next,
+                      }),
+                    );
+                  }}
+                  aria-label={
+                    hideCompleted ? "완료 항목 표시" : "완료 항목 숨기기"
+                  }
+                  aria-pressed={hideCompleted}
+                  title={hideCompleted ? "완료 항목 표시" : "완료 항목 숨기기"}
+                >
+                  <SlidersHorizontal size={17} />
+                  <span>{hideCompleted ? "미완료만" : "완료 포함"}</span>
+                </button>
+              </div>
+            </section>
+            {dataError && (
+              <div role="alert" className="form-error">
+                {dataError}
+              </div>
+            )}
+            {rolloverError && (
+              <div role="status" className="form-error">
+                {rolloverError}
+              </div>
+            )}
+            {!loaded && !(previewActive && view === "week") ? (
+              <div className="board-skeleton" aria-label="일정 불러오는 중">
+                {days.map((d) => (
+                  <div key={d}>
+                    <span />
+                    <i />
+                    <i />
+                    <i />
+                  </div>
                 ))}
               </div>
-              <div className="week-board">
-                {days.map((day, i) => {
-                  const items = week.filter(
-                    (t) => t.date === day && (!hideCompleted || !t.done),
-                  );
-                  return (
-                    <section
-                      className={
-                        "day-column " +
-                        (day === today ? "today-column " : "") +
-                        (day === selectedDay ? "selected-day " : "") +
-                        (holidays.days[day] ? "holiday-column " : "") +
-                        (i > 4 ? "weekend" : "")
-                      }
-                      key={day}
-                      aria-label={
-                        day +
-                        " " +
-                        WEEKDAYS[i] +
-                        "요일" +
-                        (holidays.days[day]
-                          ? " · " + holidays.days[day].join(" · ")
-                          : "")
-                      }
-                      onDragOver={(e) => e.preventDefault()}
-                      onDrop={(e) => drop(e, day)}
-                    >
-                      <header className="day-heading">
-                        <div>
-                          <span className="day-name">
-                            {WEEKDAYS[i]}
-                            <span className="day-full">요일</span>
-                          </span>
-                          {day === today && (
-                            <span className="today-tag">TODAY</span>
-                          )}
-                        </div>
-                        <div className="day-date-row">
-                          <strong>{Number(day.slice(-2))}</strong>
-                          <span>
-                            {items.length
-                              ? items.length + "개 할 일"
-                              : "여유로운 하루"}
-                          </span>
-                        </div>
-                        {holidays.days[day] && (
-                          <p className="holiday-name">
-                            {holidays.days[day].join(" · ")}
-                          </p>
-                        )}
-                      </header>
-                      <div className="day-tasks">
-                        {items.map((t) => (
-                          <TaskCard
-                            key={t.id}
-                            task={t}
-                            onOpen={openTask}
-                            pending={!loaded}
-                            onToggle={toggle}
-                            onDrop={(e, b) => drop(e, day, null, b)}
-                          />
-                        ))}
-                        <QuickAdd
-                          label={day + " 할 일 추가"}
-                          onAdd={(text) => newTask(text, { date: day })}
-                        />
-                        {!items.length && (
-                          <div className="day-empty">
-                            <span>
-                              오늘의 작은 계획을
-                              <br />
-                              남겨 보세요.
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </section>
-                  );
-                })}
-              </div>
-              <div className="board-hint">
-                <span>
-                  <span className="tiny-dot" />{" "}
-                  {new Date(start + "T12:00:00").getMonth() + 1}월{" "}
-                  {Number(start.slice(-2))}일 —{" "}
-                  {new Date(addDays(start, 6) + "T12:00:00").getMonth() + 1}월{" "}
-                  {Number(addDays(start, 6).slice(-2))}일
-                </span>
+            ) : view === "week" ? (
+              <>
                 <div
-                  className="holiday-source"
-                  title={`한국천문연구원 자료 · holidays.dist.be 제공${holidays.updatedAt ? " · 갱신 " + new Date(holidays.updatedAt).toLocaleString("ko-KR") : ""}`}
+                  className="mobile-day-picker"
+                  role="tablist"
+                  aria-label="요일 선택"
                 >
-                  <a
-                    href="https://github.com/distbe/holidays#데이터-출처"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    한국 공휴일
-                  </a>
-                  <button
-                    type="button"
-                    onClick={holidays.refresh}
-                    disabled={holidays.loading}
-                    aria-label="공휴일 정보 새로고침"
-                  >
-                    {holidays.loading
-                      ? "확인 중…"
-                      : holidays.failed
-                        ? holidays.available
-                          ? "이전 정보 · 재시도"
-                          : "불러오기 재시도"
-                        : "새로고침"}
-                  </button>
+                  {days.map((d, i) => (
+                    <DayDropTab
+                      zone={dayZone(d)}
+                      role="tab"
+                      aria-selected={selectedDay === d}
+                      key={d}
+                      className={
+                        (selectedDay === d ? "chosen " : "") +
+                        (d === today ? "is-today " : "") +
+                        (holidays.days[d] ? "is-holiday" : "")
+                      }
+                      aria-label={`${d} ${WEEKDAYS[i]}요일${holidays.days[d] ? " · " + holidays.days[d].join(" · ") : ""}`}
+                      title={holidays.days[d]?.join(" · ")}
+                      onClick={() => setSelectedDay(d)}
+                    >
+                      <span>{WEEKDAYS[i]}</span>
+                      <strong>{Number(d.slice(-2))}</strong>
+                      <i
+                        className={
+                          week.some((t) => t.date === d && !t.done)
+                            ? "has-tasks"
+                            : ""
+                        }
+                      />
+                    </DayDropTab>
+                  ))}
                 </div>
-                <span>
-                  드래그해서 날짜와 순서를 바꿔 보세요{" "}
-                  <ArrowUpRight size={12} />
-                </span>
-              </div>
-              {loaded && <Backlogs {...backlogProps} />}
-            </>
-          ) : view === "someday" ? (
-            <Backlogs {...backlogProps} />
-          ) : view === "search" ? (
-            <section className="results-section">
-              <div className="results-header">
-                <span>
-                  {search
-                    ? "검색 결과 " +
-                      results.length +
-                      (results.length === searchLimit ? "개 이상" : "개")
-                    : "검색어를 입력해 주세요"}
-                </span>
-                <select
-                  aria-label="검색 완료 상태"
-                  value={filter}
-                  onChange={(e) => setFilter(e.target.value)}
-                >
-                  <option value="all">전체 상태</option>
-                  <option value="open">미완료</option>
-                  <option value="done">완료</option>
-                </select>
-              </div>
-              {results.map((t) => (
-                <div className="search-result" key={t.id}>
-                  <TaskCard
-                    task={t}
-                    onOpen={openTask}
-                    onToggle={toggle}
-                    compact
-                  />
-                  <span className="result-placement">
-                    {calendars.find((c) => c.id === t.calendarId)?.name} ·{" "}
-                    {t.date ||
-                      calendar?.lists?.find((l) => l.id === t.listId)?.name ||
-                      "언젠가"}
-                  </span>
-                  {t.note && <p>{htmlText(t.note).slice(0, 180)}</p>}
-                </div>
-              ))}
-              {search && !results.length && (
-                <div className="empty-state">
-                  <Search size={30} />
-                  <h3>일치하는 항목이 없어요</h3>
-                  <p>단어를 짧게 나누거나 다른 표현으로 검색해 보세요.</p>
-                </div>
-              )}
-              {results.length === searchLimit && (
-                <button
-                  className="secondary more-results"
-                  onClick={() => setSearchLimit((n) => n + 100)}
-                >
-                  결과 더 보기
-                </button>
-              )}
-            </section>
-          ) : (
-            <section className="all-tasks">
-              <div className="section-heading">
-                <h2>{view === "trash" ? "삭제된 항목" : "모든 일정"}</h2>
-                <span>
-                  {
-                    ownTasks.filter((t) =>
-                      view === "trash" ? t.deleted : !t.deleted,
-                    ).length
-                  }
-                  개
-                </span>
-              </div>
-              {ownTasks
-                .filter((t) =>
-                  view === "trash"
-                    ? t.deleted
-                    : !t.deleted && (!hideCompleted || !t.done),
-                )
-                .sort((a, b) =>
-                  (b.date || "9999").localeCompare(a.date || "9999"),
-                )
-                .slice(0, searchLimit)
-                .map((t) => (
-                  <div className="all-task-row" key={t.id}>
-                    <span className="all-date">{t.date || "언젠가"}</span>
-                    <TaskCard task={t} onOpen={openTask} onToggle={toggle} />
-                    {view === "trash" && (
-                      <button
-                        className="secondary"
-                        onClick={() =>
-                          run(
-                            () => store.restoreTask(user.uid, t),
-                            "항목을 복원했어요.",
+                <div className="week-board" key={start + ":" + calId}>
+                  {days.map((day, i) => {
+                    const items = week.filter(
+                      (t) => t.date === day && (!hideCompleted || !t.done),
+                    );
+                    return (
+                      <DragZone
+                        as="section"
+                        id={dayZone(day)}
+                        items={items}
+                        className={(visible) =>
+                          "day-column " +
+                          (day === today ? "today-column " : "") +
+                          (day === selectedDay ? "selected-day " : "") +
+                          (holidays.days[day] ? "holiday-column " : "") +
+                          (isRestingHoliday(
+                            holidays.days[day],
+                            week.filter((task) => task.date === day).length,
+                            visible.length,
                           )
+                            ? "holiday-rest "
+                            : "") +
+                          (i > 4 ? "weekend" : "")
+                        }
+                        key={day}
+                        aria-label={
+                          day +
+                          " " +
+                          WEEKDAYS[i] +
+                          "요일" +
+                          (holidays.days[day]
+                            ? " · " + holidays.days[day].join(" · ")
+                            : "")
                         }
                       >
-                        복원
-                      </button>
-                    )}
+                        {(items) => (
+                          <>
+                            <header className="day-heading">
+                              <div>
+                                <span className="day-name">
+                                  {WEEKDAYS[i]}
+                                  <span className="day-full">요일</span>
+                                </span>
+                                {day === today && (
+                                  <span className="today-tag">TODAY</span>
+                                )}
+                              </div>
+                              <div className="day-date-row">
+                                <strong>{Number(day.slice(-2))}</strong>
+                                <span>
+                                  {items.length
+                                    ? items.length + "개 할 일"
+                                    : "여유로운 하루"}
+                                </span>
+                              </div>
+                              {holidays.days[day] && (
+                                <p className="holiday-name">
+                                  {holidays.days[day].join(" · ")}
+                                </p>
+                              )}
+                            </header>
+                            <div className="day-tasks">
+                              {items.map((t) => (
+                                <TaskCard
+                                  key={t.id}
+                                  task={t}
+                                  onOpen={openTask}
+                                  pending={!loaded}
+                                  onToggle={toggle}
+                                />
+                              ))}
+                              <QuickAdd
+                                label={day + " 할 일 추가"}
+                                onAdd={(text) => newTask(text, { date: day })}
+                              />
+                              {!items.length && (
+                                <div className="day-empty">
+                                  <span>
+                                    {isRestingHoliday(
+                                      holidays.days[day],
+                                      week.filter((task) => task.date === day)
+                                        .length,
+                                      items.length,
+                                    ) ? (
+                                      "쉬어가는 공휴일"
+                                    ) : (
+                                      <>
+                                        오늘의 작은 계획을
+                                        <br />
+                                        남겨 보세요.
+                                      </>
+                                    )}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          </>
+                        )}
+                      </DragZone>
+                    );
+                  })}
+                </div>
+                <div className="board-hint">
+                  <span>
+                    <span className="tiny-dot" />{" "}
+                    {new Date(start + "T12:00:00").getMonth() + 1}월{" "}
+                    {Number(start.slice(-2))}일 —{" "}
+                    {new Date(addDays(start, 6) + "T12:00:00").getMonth() + 1}월{" "}
+                    {Number(addDays(start, 6).slice(-2))}일
+                  </span>
+                  <div
+                    className="holiday-source"
+                    title={`한국천문연구원 자료 · holidays.dist.be 제공${holidays.updatedAt ? " · 갱신 " + new Date(holidays.updatedAt).toLocaleString("ko-KR") : ""}`}
+                  >
+                    <a
+                      href="https://github.com/distbe/holidays#데이터-출처"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      한국 공휴일
+                    </a>
+                    <button
+                      type="button"
+                      onClick={holidays.refresh}
+                      disabled={holidays.loading}
+                      aria-label="공휴일 정보 새로고침"
+                    >
+                      {holidays.loading
+                        ? "확인 중…"
+                        : holidays.failed
+                          ? holidays.available
+                            ? "이전 정보 · 재시도"
+                            : "불러오기 재시도"
+                          : "새로고침"}
+                    </button>
+                  </div>
+                  <span>
+                    드래그해서 날짜와 순서를 바꿔 보세요{" "}
+                    <ArrowUpRight size={12} />
+                  </span>
+                </div>
+                {loaded && <Backlogs {...backlogProps} />}
+              </>
+            ) : view === "someday" ? (
+              <Backlogs {...backlogProps} />
+            ) : view === "search" ? (
+              <section className="results-section">
+                <div className="results-header">
+                  <span>
+                    {search
+                      ? "검색 결과 " +
+                        results.length +
+                        (results.length === searchLimit ? "개 이상" : "개")
+                      : "검색어를 입력해 주세요"}
+                  </span>
+                  <select
+                    aria-label="검색 완료 상태"
+                    value={filter}
+                    onChange={(e) => setFilter(e.target.value)}
+                  >
+                    <option value="all">전체 상태</option>
+                    <option value="open">미완료</option>
+                    <option value="done">완료</option>
+                  </select>
+                </div>
+                {results.map((t) => (
+                  <div className="search-result" key={t.id}>
+                    <TaskCard
+                      task={t}
+                      onOpen={openTask}
+                      onToggle={toggle}
+                      compact
+                    />
+                    <span className="result-placement">
+                      {calendars.find((c) => c.id === t.calendarId)?.name} ·{" "}
+                      {t.date ||
+                        calendar?.lists?.find((l) => l.id === t.listId)?.name ||
+                        "언젠가"}
+                    </span>
+                    {t.note && <p>{htmlText(t.note).slice(0, 180)}</p>}
                   </div>
                 ))}
-              {ownTasks.filter((t) =>
-                view === "trash" ? t.deleted : !t.deleted,
-              ).length > searchLimit && (
-                <button
-                  className="secondary more-results"
-                  onClick={() => setSearchLimit((n) => n + 100)}
-                >
-                  더 보기
-                </button>
-              )}
-            </section>
-          )}
-          <footer className="page-footer">
-            <span>조금 더 가벼운 하루, daynote.</span>
-            <span>
-              ONE THING AT A TIME <Leaf size={12} />
-            </span>
-          </footer>
-        </main>
-      </div>
-      <Suspense
-        fallback={
-          activeTask ? (
-            <Modal
-              title="할 일 자세히"
-              onClose={() => setActiveTask(null)}
-              className="detail-modal"
-            >
-              <div className="detail-body" aria-busy="true">
-                <h2 className="detail-loading-title">{activeTask.text}</h2>
-                <section className="note-section">
-                  <h3>메모</h3>
-                  <div className="note-loading-preview">
-                    {htmlText((activeTask.note || "").slice(0, 16000)) ||
-                      "메모를 열고 있어요…"}
+                {search && !results.length && (
+                  <div className="empty-state">
+                    <Search size={30} />
+                    <h3>일치하는 항목이 없어요</h3>
+                    <p>단어를 짧게 나누거나 다른 표현으로 검색해 보세요.</p>
                   </div>
-                </section>
-              </div>
-            </Modal>
-          ) : (
-            <div className="panel-loading">
-              <Spinner />
-            </div>
-          )
-        }
-      >
-        {activeTask && (
-          <Details
-            task={activeTask}
-            calendars={calendars}
-            uid={user.uid}
-            store={store}
-            onClose={() => setActiveTask(null)}
-            notify={notify}
-            onSaved={() => setActiveTask(null)}
-          />
-        )}{" "}
-        {panel === "settings" && (
-          <Preferences
-            profile={profile}
-            uid={user.uid}
-            store={store}
-            calendars={calendars}
-            tasks={tasks}
-            onClose={() => setPanel(null)}
-            notify={notify}
-            onImported={(id) => {
-              setCalId(id);
-              run(() =>
-                store.updateUser(user.uid, {
-                  "settings.selectedCalendarId": id,
-                }),
-              );
-              setPanel(null);
-              setView("week");
-            }}
-          />
-        )}
-        {panel === "admin" && isAdmin && (
-          <Admin
-            currentUid={user.uid}
-            store={store}
-            onClose={() => setPanel(null)}
-            notify={notify}
-          />
-        )}
-      </Suspense>
-    </div>
+                )}
+                {results.length === searchLimit && (
+                  <button
+                    className="secondary more-results"
+                    onClick={() => setSearchLimit((n) => n + 100)}
+                  >
+                    결과 더 보기
+                  </button>
+                )}
+              </section>
+            ) : (
+              <section className="all-tasks">
+                <div className="section-heading">
+                  <h2>{view === "trash" ? "삭제된 항목" : "모든 일정"}</h2>
+                  <span>
+                    {
+                      ownTasks.filter((t) =>
+                        view === "trash" ? t.deleted : !t.deleted,
+                      ).length
+                    }
+                    개
+                  </span>
+                </div>
+                {ownTasks
+                  .filter((t) =>
+                    view === "trash"
+                      ? t.deleted
+                      : !t.deleted && (!hideCompleted || !t.done),
+                  )
+                  .sort((a, b) =>
+                    (b.date || "9999").localeCompare(a.date || "9999"),
+                  )
+                  .slice(0, searchLimit)
+                  .map((t) => (
+                    <div className="all-task-row" key={t.id}>
+                      <span className="all-date">{t.date || "언젠가"}</span>
+                      <TaskCard task={t} onOpen={openTask} onToggle={toggle} />
+                      {view === "trash" && (
+                        <button
+                          className="secondary"
+                          onClick={() =>
+                            run(
+                              () => store.restoreTask(user.uid, t),
+                              "항목을 복원했어요.",
+                            )
+                          }
+                        >
+                          복원
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                {ownTasks.filter((t) =>
+                  view === "trash" ? t.deleted : !t.deleted,
+                ).length > searchLimit && (
+                  <button
+                    className="secondary more-results"
+                    onClick={() => setSearchLimit((n) => n + 100)}
+                  >
+                    더 보기
+                  </button>
+                )}
+              </section>
+            )}
+            <footer className="page-footer">
+              <span>조금 더 가벼운 하루, daynote.</span>
+              <span>
+                ONE THING AT A TIME <Leaf size={12} />
+              </span>
+            </footer>
+          </main>
+        </div>
+        <MotionPresence show={!!activeTask || !!panel}>
+          <Suspense
+            fallback={
+              activeTask ? (
+                <Modal
+                  title="할 일 자세히"
+                  onClose={() => setActiveTask(null)}
+                  className="detail-modal"
+                >
+                  <div className="detail-body" aria-busy="true">
+                    <h2 className="detail-loading-title">{activeTask.text}</h2>
+                    <section className="note-section">
+                      <h3>메모</h3>
+                      <div className="note-loading-preview">
+                        {htmlText((activeTask.note || "").slice(0, 16000)) ||
+                          "메모를 열고 있어요…"}
+                      </div>
+                    </section>
+                  </div>
+                </Modal>
+              ) : (
+                <div className="panel-loading">
+                  <Spinner />
+                </div>
+              )
+            }
+          >
+            {activeTask && (
+              <Details
+                task={activeTask}
+                calendars={calendars}
+                uid={user.uid}
+                store={store}
+                onClose={() => setActiveTask(null)}
+                notify={notify}
+                onSaved={() => setActiveTask(null)}
+              />
+            )}{" "}
+            {panel === "settings" && (
+              <Preferences
+                profile={profile}
+                uid={user.uid}
+                store={store}
+                calendars={calendars}
+                tasks={tasks}
+                onClose={() => setPanel(null)}
+                notify={notify}
+                onImported={(id) => {
+                  setCalId(id);
+                  run(() =>
+                    store.updateUser(user.uid, {
+                      "settings.selectedCalendarId": id,
+                    }),
+                  );
+                  setPanel(null);
+                  setView("week");
+                }}
+              />
+            )}
+            {panel === "admin" && isAdmin && (
+              <Admin
+                currentUid={user.uid}
+                store={store}
+                onClose={() => setPanel(null)}
+                notify={notify}
+              />
+            )}
+          </Suspense>
+        </MotionPresence>
+      </div>
+    </BoardDragProvider>
   );
 }
 
@@ -1475,7 +1570,6 @@ function Backlogs({
   uid,
   store,
   run,
-  drop,
   openTask,
   toggle,
   newTask,
@@ -1517,59 +1611,66 @@ function Backlogs({
             .filter((t) => t.listId === list.id && (!hideCompleted || !t.done))
             .sort((a, b) => (a.order || 0) - (b.order || 0));
           return (
-            <section
+            <DragZone
+              as="section"
+              id={listZone(list.id)}
+              items={items}
               className="backlog-column"
               key={list.id}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => drop(e, null, list.id)}
             >
-              <header>
-                <span
-                  className="list-dot"
-                  style={{
-                    background: ["#92a8ce", "#c9ab78", "#a2b697", "#bb9fbb"][
-                      i % 4
-                    ],
-                  }}
-                />
-                <button
-                  className="list-name"
-                  title="목록 이름 바꾸기"
-                  onClick={() => {
-                    const name = prompt("목록 이름", list.name);
-                    if (name?.trim())
-                      run(() =>
-                        store.saveCalendar(uid, {
-                          ...calendar,
-                          lists: calendar.lists.map((l) =>
-                            l.id === list.id
-                              ? { ...l, name: name.trim().slice(0, 200) }
-                              : l,
-                          ),
-                        }),
-                      );
-                  }}
-                >
-                  {list.name}
-                </button>
-                <span className="list-count">{items.length}</span>
-              </header>
-              <div>
-                {items.map((t) => (
-                  <TaskCard
-                    key={t.id}
-                    task={t}
-                    onOpen={openTask}
-                    onToggle={toggle}
-                    onDrop={(e, b) => drop(e, null, list.id, b)}
-                  />
-                ))}
-                <QuickAdd
-                  label={list.name + " 할 일 추가"}
-                  onAdd={(text) => newTask(text, { listId: list.id })}
-                />
-              </div>
-            </section>
+              {(items) => (
+                <>
+                  <header>
+                    <span
+                      className="list-dot"
+                      style={{
+                        background: [
+                          "#92a8ce",
+                          "#c9ab78",
+                          "#a2b697",
+                          "#bb9fbb",
+                        ][i % 4],
+                      }}
+                    />
+                    <button
+                      className="list-name"
+                      title="목록 이름 바꾸기"
+                      onClick={() => {
+                        const name = prompt("목록 이름", list.name);
+                        if (name?.trim())
+                          run(() =>
+                            store.saveCalendar(uid, {
+                              ...calendar,
+                              lists: calendar.lists.map((l) =>
+                                l.id === list.id
+                                  ? { ...l, name: name.trim().slice(0, 200) }
+                                  : l,
+                              ),
+                            }),
+                          );
+                      }}
+                    >
+                      {list.name}
+                    </button>
+                    <span className="list-count">{items.length}</span>
+                  </header>
+                  <div>
+                    {items.map((t) => (
+                      <TaskCard
+                        key={t.id}
+                        task={t}
+                        onOpen={openTask}
+                        onToggle={toggle}
+                      />
+                    ))}
+                    <QuickAdd
+                      label={list.name + " 할 일 추가"}
+                      onAdd={(text) => newTask(text, { listId: list.id })}
+                    />
+                  </div>
+                </>
+              )}
+            </DragZone>
           );
         })}
       </div>
@@ -1757,8 +1858,10 @@ class AppBoundary extends React.Component {
     );
   }
 }
-createRoot(document.getElementById("root")).render(
-  <AppBoundary>
-    <App />
-  </AppBoundary>,
-);
+const appRoot = document.getElementById("root");
+if (appRoot)
+  createRoot(appRoot).render(
+    <AppBoundary>
+      <App />
+    </AppBoundary>,
+  );
