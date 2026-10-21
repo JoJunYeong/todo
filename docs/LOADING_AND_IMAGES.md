@@ -8,6 +8,8 @@ On the same local production preview origin, three revisit samples changed from 
 
 ## Captures
 
+The memo toolbar also provides a “가로 구분선” button. It inserts a horizontal rule at the current caret, retains normal typing below it and supports the editor's native undo/redo. Rules survive sanitization, Save and reopening. Native touch insertion, undo/redo, a second Save and reload persistence passed with the isolated synthetic store at widths 320, 390, 768, 1024 and 1440 pixels; these checks do not establish live Firebase persistence.
+
 The memo accepts clipboard image files, rich HTML clipboard images, image uploads and image drops. Images are re-encoded, limited to 2560 pixels per side and 480 KiB encoded binary, and stored separately under `users/{uid}/noteImages/{id}`. The memo contains references rather than embedded image data. Images load when their memo opens, not in the initial task subscription. Clicking an image offers a larger view and original size.
 
 New image documents are written on Save. Closing an unsaved draft does not upload images. Note and image access require the active owning account; administrator access to other users' private notes/images is denied. Existing image bytes are immutable. Removing an image from a note removes its reference; the original private image document remains available to older references. This release adds no paid storage service or billing upgrade.

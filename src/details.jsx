@@ -19,6 +19,7 @@ import {
   Bold,
   Italic,
   List,
+  Minus,
   Link2,
   Info,
   CheckCheck,
@@ -40,7 +41,7 @@ const safeHTML = (note, isMD) =>
     isMD
       ? marked.parse(note || "", { breaks: true, gfm: true })
       : /^\s*</.test(note || "") ||
-          /<\/?(?:div|p|br|span|img|strong|em|b|i|a|table|ul|ol|li)\b[^>]*>/i.test(
+          /<\/?(?:div|p|br|hr|span|img|strong|em|b|i|a|table|ul|ol|li)\b[^>]*>/i.test(
             note || "",
           )
         ? note
@@ -424,6 +425,16 @@ export function Details({
                   onClick={() => format("insertUnorderedList")}
                 >
                   <List size={15} />
+                </button>
+                <button
+                  type="button"
+                  title="가로 구분선"
+                  aria-label="메모 가로 구분선 추가"
+                  disabled={saving || preparingImages}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => format("insertHorizontalRule")}
+                >
+                  <Minus size={16} />
                 </button>
                 <button
                   type="button"

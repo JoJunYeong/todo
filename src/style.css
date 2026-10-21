@@ -1729,6 +1729,12 @@ nav {
 .note-editor p {
   margin: 0 0 8px;
 }
+.note-editor hr {
+  height: 0;
+  margin: 18px 0;
+  border: 0;
+  border-top: 1px solid #c6d2c6;
+}
 .checklist-section {
   margin-top: 26px;
 }
