@@ -57,6 +57,7 @@ import {
   authEmail,
 } from "./domain.js";
 import "./style.css";
+import "./planner.css";
 
 const Details = lazy(() =>
   import("./panels.jsx").then((m) => ({ default: m.Details })),
@@ -93,6 +94,7 @@ export function Modal({ title, onClose, children, className = "" }) {
     const key = (e) => {
       if (e.key === "Escape") {
         e.preventDefault();
+        e.stopPropagation();
         closeRef.current();
       }
       if (e.key === "Tab") {
@@ -113,12 +115,12 @@ export function Modal({ title, onClose, children, className = "" }) {
         }
       }
     };
-    document.addEventListener("keydown", key);
+    document.addEventListener("keydown", key, true);
     const overflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       clearTimeout(timer);
-      document.removeEventListener("keydown", key);
+      document.removeEventListener("keydown", key, true);
       document.body.style.overflow = overflow;
       previous?.focus?.();
     };
@@ -435,7 +437,7 @@ function Planner({ user, profile, isAdmin, store, notify }) {
     [view, setView] = useState("week"),
     [search, setSearch] = useState(""),
     [filter, setFilter] = useState("all"),
-    [showDrawer, setShowDrawer] = useState(false),
+    [sidebarOpen, setSidebarOpen] = useState(false),
     [panel, setPanel] = useState(null),
     [activeTask, setActiveTask] = useState(null),
     [online, setOnline] = useState(navigator.onLine),
@@ -445,7 +447,62 @@ function Planner({ user, profile, isAdmin, store, notify }) {
     ),
     [searchLimit, setSearchLimit] = useState(60);
   const init = useRef(false),
-    inputSearch = useRef();
+    inputSearch = useRef(),
+    sidebarRef = useRef(),
+    sidebarToggle = useRef(),
+    contentRef = useRef();
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const narrow = matchMedia("(max-width: 899px)"),
+      previousOverflow = document.body.style.overflow;
+    const setScroll = () => {
+      document.body.style.overflow = narrow.matches
+        ? "hidden"
+        : previousOverflow;
+      if (contentRef.current) contentRef.current.inert = narrow.matches;
+      sidebarRef.current?.setAttribute(
+        "role",
+        narrow.matches ? "dialog" : "complementary",
+      );
+      if (narrow.matches)
+        sidebarRef.current?.setAttribute("aria-modal", "true");
+      else sidebarRef.current?.removeAttribute("aria-modal");
+    };
+    const key = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        setSidebarOpen(false);
+      }
+      if (event.key === "Tab" && narrow.matches) {
+        const controls = [
+          ...sidebarRef.current.querySelectorAll(
+            "button:not(:disabled),a[href]",
+          ),
+        ];
+        const first = controls[0],
+          last = controls.at(-1);
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last?.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first?.focus();
+        }
+      }
+    };
+    setScroll();
+    sidebarRef.current?.querySelector("button")?.focus();
+    narrow.addEventListener("change", setScroll);
+    document.addEventListener("keydown", key);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      if (contentRef.current) contentRef.current.inert = false;
+      narrow.removeEventListener("change", setScroll);
+      document.removeEventListener("keydown", key);
+      sidebarToggle.current?.focus();
+    };
+  }, [sidebarOpen]);
   const error = useCallback(
     (e) => {
       setDataError(
@@ -501,13 +558,14 @@ function Planner({ user, profile, isAdmin, store, notify }) {
   }, []);
   useEffect(() => {
     const key = (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k" && !panel && !activeTask) {
         e.preventDefault();
-        inputSearch.current?.focus();
+        setSidebarOpen(false);
+        requestAnimationFrame(() => inputSearch.current?.focus());
         setView("search");
       }
       if (e.key === "Escape" && !panel && !activeTask) {
-        setShowDrawer(false);
+        setSidebarOpen(false);
         if (search) {
           setSearch("");
           setView("week");
@@ -531,8 +589,7 @@ function Planner({ user, profile, isAdmin, store, notify }) {
   );
   const days = Array.from({ length: 7 }, (_, i) => addDays(start, i)),
     completed = week.filter((t) => t.done).length,
-    total = week.length,
-    percentage = total ? Math.round((completed / total) * 100) : 0;
+    total = week.length;
   const run = async (fn, message) => {
     try {
       await fn();
@@ -564,7 +621,7 @@ function Planner({ user, profile, isAdmin, store, notify }) {
   };
   const changeView = (v) => {
     setView(v);
-    setShowDrawer(false);
+    setSidebarOpen(false);
     if (v !== "search") setSearch("");
   };
   const moveWeek = (n) => {
@@ -601,20 +658,29 @@ function Planner({ user, profile, isAdmin, store, notify }) {
       return;
     await authModule.logout();
   };
-  const statLabel =
+  const viewTitle =
     view === "search"
-      ? "빠르게 찾아보세요"
+      ? "검색"
       : view === "trash"
-        ? "다시 꺼내 쓸 수 있어요"
+        ? "휴지통"
         : view === "all"
-          ? "흩어진 할 일을 한곳에"
+          ? "전체 할 일"
           : view === "someday"
-            ? "지금이 아니어도 괜찮아요"
-            : "차근차근, 나의 속도로";
+            ? "언젠가"
+            : "나의 한 주";
   const sidebar = (
     <>
-      <Brand />
-      <div className="workspace-label">MY WORKSPACE</div>
+      <div className="sidebar-header">
+        <Brand />
+        <button
+          className="icon-button"
+          aria-label="사이드바 접기"
+          onClick={() => setSidebarOpen(false)}
+        >
+          <X size={20} />
+        </button>
+      </div>
+      <div className="workspace-label">내 일정</div>
       <nav aria-label="주 메뉴">
         <button
           className={view === "week" ? "nav-item active" : "nav-item"}
@@ -675,7 +741,7 @@ function Planner({ user, profile, isAdmin, store, notify }) {
                   "settings.selectedCalendarId": c.id,
                 }),
               );
-              setShowDrawer(false);
+              setSidebarOpen(false);
             }}
           >
             <span
@@ -687,21 +753,18 @@ function Planner({ user, profile, isAdmin, store, notify }) {
           </button>
         ))}
       </div>
-      <div className="sidebar-note">
-        <Leaf size={25} />
-        <p>
-          모두 해내지 않아도 괜찮아요.
-          <br />
-          오늘의 한 가지면 충분해요.
-        </p>
-        <span>MAKE ROOM FOR YOURSELF</span>
-      </div>
       <div className="sidebar-bottom">
         <button className="nav-item" onClick={() => changeView("trash")}>
           <Trash2 size={17} />
           <span>휴지통</span>
         </button>
-        <button className="nav-item" onClick={() => setPanel("settings")}>
+        <button
+          className="nav-item"
+          onClick={() => {
+            setSidebarOpen(false);
+            setPanel("settings");
+          }}
+        >
           <Settings size={17} />
           <span>설정 및 백업</span>
         </button>
@@ -710,7 +773,7 @@ function Planner({ user, profile, isAdmin, store, notify }) {
             className="nav-item"
             onClick={() => {
               setPanel("admin");
-              setShowDrawer(false);
+              setSidebarOpen(false);
             }}
           >
             <ShieldCheck size={17} />
@@ -737,41 +800,57 @@ function Planner({ user, profile, isAdmin, store, notify }) {
     </>
   );
   return (
-    <div className="app-layout">
-      <aside className="sidebar">{sidebar}</aside>
-      {showDrawer && (
-        <div
-          className="drawer-backdrop"
-          onClick={(e) => e.target === e.currentTarget && setShowDrawer(false)}
-        >
-          <aside className="sidebar mobile-sidebar">
-            <button
-              className="drawer-close icon-button"
-              aria-label="메뉴 닫기"
-              onClick={() => setShowDrawer(false)}
-            >
-              <X size={20} />
-            </button>
+    <div className={"app-layout" + (sidebarOpen ? " sidebar-open" : "")}>
+      {sidebarOpen && (
+        <>
+          <button
+            className="sidebar-scrim"
+            aria-label="사이드바 바깥에서 닫기"
+            tabIndex={-1}
+            onClick={() => setSidebarOpen(false)}
+          />
+          <aside
+            className="sidebar"
+            id="workspace-sidebar"
+            aria-label="작업 공간 메뉴"
+            ref={sidebarRef}
+          >
             {sidebar}
           </aside>
-        </div>
+        </>
       )}
-      <div className="app-content">
+      <div className="app-content" ref={contentRef}>
         <header className="topbar">
           <div className="topbar-left">
             <button
-              className="icon-button mobile-menu"
-              aria-label="메뉴 열기"
-              onClick={() => setShowDrawer(true)}
+              ref={sidebarToggle}
+              className="icon-button sidebar-toggle"
+              aria-label={sidebarOpen ? "사이드바 접기" : "사이드바 펼치기"}
+              aria-expanded={sidebarOpen}
+              aria-controls="workspace-sidebar"
+              onClick={() => setSidebarOpen((open) => !open)}
             >
               <Menu size={21} />
             </button>
-            <span className="breadcrumb">
-              내 작업 공간 <span>/</span>{" "}
-              <strong>{calendar?.name || "나의 캘린더"}</strong>
-            </span>
+            <h1 className="view-title">{viewTitle}</h1>
+            <button
+              className="calendar-switch"
+              onClick={() => setSidebarOpen(true)}
+              aria-label={"캘린더 선택: " + (calendar?.name || "나의 캘린더")}
+            >
+              <span>{calendar?.name || "나의 캘린더"}</span>
+              <ChevronDown size={13} />
+            </button>
           </div>
           <div className="topbar-right">
+            {view === "week" && (
+              <span
+                className="completion-summary"
+                aria-label={`이번 주 ${total}개 중 ${completed}개 완료`}
+              >
+                {completed}/{total} 완료
+              </span>
+            )}
             <div
               className={"sync-status " + (!online ? "offline" : "")}
               title={
@@ -811,52 +890,6 @@ function Planner({ user, profile, isAdmin, store, notify }) {
           </div>
         </header>
         <main className="main-content">
-          <section className="page-heading">
-            <div>
-              <div className="eyebrow">{statLabel}</div>
-              <h1>
-                {view === "week"
-                  ? "나의 한 주"
-                  : view === "search"
-                    ? "빠른 검색"
-                    : view === "trash"
-                      ? "휴지통"
-                      : view === "all"
-                        ? "전체 할 일"
-                        : "언젠가 하고 싶은 일"}
-                <span className="heading-dot">.</span>
-              </h1>
-              <p>
-                {view === "week"
-                  ? "해야 할 일도, 하고 싶은 일도. 한 칸씩 채워 보세요."
-                  : view === "search"
-                    ? "제목, 메모, 체크리스트를 한 번에 검색해요."
-                    : view === "trash"
-                      ? "삭제한 항목을 다시 복원할 수 있어요."
-                      : "마음속에 두었던 일을 차분히 정리해 보세요."}
-              </p>
-            </div>
-            {view === "week" && (
-              <div className="progress-card">
-                <div
-                  className="progress-ring"
-                  style={{ "--progress": percentage * 3.6 + "deg" }}
-                >
-                  <span>
-                    {percentage}
-                    <small>%</small>
-                  </span>
-                </div>
-                <div>
-                  <strong>이번 주도 한 걸음씩</strong>
-                  <span>
-                    {completed} / {total}개 완료했어요
-                  </span>
-                </div>
-                <Leaf className="progress-leaf" size={30} />
-              </div>
-            )}
-          </section>
           <section className="toolbar">
             <div className="week-controls">
               <button
@@ -920,7 +953,7 @@ function Planner({ user, profile, isAdmin, store, notify }) {
                 <input
                   ref={inputSearch}
                   aria-label="전체 일정 검색"
-                  placeholder="무엇을 찾고 있나요?"
+                  placeholder="일정·메모 검색"
                   value={search}
                   onChange={(e) => {
                     setSearch(e.target.value);
@@ -956,10 +989,11 @@ function Planner({ user, profile, isAdmin, store, notify }) {
                 aria-label={
                   hideCompleted ? "완료 항목 표시" : "완료 항목 숨기기"
                 }
+                aria-pressed={hideCompleted}
                 title={hideCompleted ? "완료 항목 표시" : "완료 항목 숨기기"}
               >
                 <SlidersHorizontal size={17} />
-                <span>{hideCompleted ? "미완료만" : "보기"}</span>
+                <span>{hideCompleted ? "미완료만" : "완료 포함"}</span>
               </button>
             </div>
           </section>

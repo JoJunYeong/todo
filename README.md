@@ -8,7 +8,7 @@ Node.js 22.12 이상에서 `npm ci`, `npm run dev`. `npm test`는 날짜·검색
 
 계정별 접근 제한과 관리자 권한은 Java 21 이상에서 `npx firebase-tools@15.34.0 emulators:exec --project demo-daynote-ein6xs --only firestore "npm run test:rules"`로 별도 검사한다. 테스트는 실제 프로젝트 데이터에 연결하지 않는다.
 
-실제 브라우저와 데이터 검증 결과는 [검증 기록](docs/VALIDATION.md)에 정리했다.
+실제 브라우저와 데이터 검증 결과는 [검증 기록](docs/VALIDATION.md)에, 화면 개선의 참고 사례와 비교 결과는 [가독성 검토](docs/UX_REVIEW.md)에 정리했다.
 
 ## 제공 기능
 

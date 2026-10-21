@@ -573,22 +573,6 @@ nav {
   border-radius: 50%;
   flex-shrink: 0;
 }
-.sidebar-note {
-  margin: 37px 8px 25px;
-  color: #98aa88;
-  flex-shrink: 0;
-}
-.sidebar-note p {
-  font-size: 11px;
-  line-height: 1.9;
-  color: #969e8f;
-  margin: 12px 0;
-}
-.sidebar-note > span {
-  font-size: 7px;
-  letter-spacing: 1.6px;
-  color: #a6b09c;
-}
 .sidebar-bottom {
   margin-top: auto;
   padding-top: 24px;
@@ -660,21 +644,6 @@ nav {
   gap: 19px;
   min-width: 0;
 }
-.breadcrumb {
-  font-size: 11px;
-  color: #a5aca0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.breadcrumb > span {
-  margin: 0 13px;
-  color: #c9cec1;
-}
-.breadcrumb strong {
-  color: #6b7863;
-  font-weight: 500;
-}
 .sync-status {
   display: flex;
   align-items: center;
@@ -691,104 +660,10 @@ nav {
   height: 29px;
   font-size: 10px;
 }
-.mobile-menu {
-  display: none;
-}
 .main-content {
   max-width: 1800px;
   margin: 0 auto;
   padding: 39px 39px 0;
-}
-.page-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 25px;
-  margin-bottom: 32px;
-}
-.page-heading .eyebrow {
-  font-size: 10px;
-  font-weight: 400;
-  letter-spacing: 1px;
-}
-.page-heading h1 {
-  font-size: 32px;
-  letter-spacing: -1.4px;
-  font-weight: 650;
-  margin: 11px 0;
-}
-.heading-dot {
-  color: #86a080;
-  margin-left: 3px;
-}
-.page-heading p {
-  font-size: 11px;
-  color: #a3aa9a;
-  margin: 0;
-  line-height: 1.6;
-}
-.progress-card {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  background: #eff2e9;
-  border: 1px solid #e9eddf;
-  border-radius: 12px;
-  padding: 17px 21px;
-  min-width: 259px;
-  position: relative;
-  overflow: hidden;
-}
-.progress-ring {
-  width: 44px;
-  height: 44px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background: conic-gradient(
-    #8ca17b 0deg var(--progress),
-    #dfe5d7 var(--progress) 360deg
-  );
-  flex-shrink: 0;
-}
-.progress-ring > span {
-  border-radius: 50%;
-  width: 36px;
-  height: 36px;
-  background: #eff2e9;
-  display: grid;
-  place-content: center;
-  grid-auto-flow: column;
-  align-items: baseline;
-  font-size: 12px;
-  font-weight: 600;
-  color: #7e946e;
-}
-.progress-ring small {
-  font-size: 8px;
-}
-.progress-card > div:nth-child(2) {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  z-index: 1;
-}
-.progress-card strong {
-  font-size: 11px;
-  font-weight: 500;
-  color: #7e8c71;
-}
-.progress-card > div > span:not(.progress-ring > span) {
-  color: #a9b29d;
-  font-size: 9px;
-}
-.progress-leaf {
-  position: absolute;
-  right: 14px;
-  bottom: -7px;
-  opacity: 0.13;
-  color: #91a479;
-  transform: rotate(-33deg);
 }
 .toolbar {
   display: flex;
@@ -1241,9 +1116,6 @@ nav {
   align-items: center;
 }
 .mobile-day-picker {
-  display: none;
-}
-.drawer-backdrop {
   display: none;
 }
 .results-section,
@@ -2003,10 +1875,6 @@ nav {
   .day-date-row > span {
     font-size: 7px;
   }
-  .progress-card {
-    min-width: 230px;
-    padding: 15px;
-  }
   .task-title {
     font-size: 11px;
   }
@@ -2050,31 +1918,6 @@ nav {
   .topbar {
     height: 64px;
     padding: 0 22px;
-  }
-  .progress-card {
-    min-width: 0;
-    padding: 12px 16px;
-    gap: 10px;
-  }
-  .progress-ring {
-    width: 38px;
-    height: 38px;
-  }
-  .progress-ring > span {
-    width: 31px;
-    height: 31px;
-  }
-  .progress-card strong {
-    font-size: 10px;
-  }
-  .progress-card > div > span {
-    font-size: 8px;
-  }
-  .page-heading h1 {
-    font-size: 29px;
-  }
-  .page-heading p {
-    max-width: 330px;
   }
   .week-board {
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -2140,16 +1983,6 @@ nav {
   .backlog-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .sidebar-note {
-    margin-top: 25px;
-    margin-bottom: 18px;
-  }
-  .sidebar-note p {
-    font-size: 10px;
-  }
-  .sidebar-note > span {
-    font-size: 6px;
-  }
   .workspace-label {
     margin-top: 36px;
   }
@@ -2184,63 +2017,13 @@ nav {
   }
 }
 @media (max-width: 899px) {
-  .sidebar:not(.mobile-sidebar) {
-    display: none;
-  }
   .app-content {
     margin-left: 0;
-  }
-  .mobile-menu {
-    display: inline-flex;
-  }
-  .drawer-backdrop {
-    display: block;
-    position: fixed;
-    inset: 0;
-    background: #263d2e65;
-    z-index: 60;
-    backdrop-filter: blur(2px);
-  }
-  .mobile-sidebar {
-    display: flex;
-    position: absolute;
-    width: 260px;
-    min-width: 260px;
-    padding: 30px 23px 17px;
-  }
-  .mobile-sidebar .brand {
-    font-size: 25px;
-  }
-  .mobile-sidebar .workspace-label {
-    margin-top: 40px;
-  }
-  .mobile-sidebar .sidebar-note {
-    margin-top: 30px;
-  }
-  .mobile-sidebar .sidebar-note p {
-    font-size: 11px;
-  }
-  .mobile-sidebar .sidebar-note > span {
-    font-size: 7px;
-  }
-  .mobile-sidebar .nav-item {
-    font-size: 13px;
-  }
-  .drawer-close {
-    position: absolute;
-    right: 15px;
-    top: 15px;
   }
 }
 @media (max-width: 767px) {
-  .sidebar:not(.mobile-sidebar) {
-    display: none;
-  }
   .app-content {
     margin-left: 0;
-  }
-  .mobile-menu {
-    display: inline-flex;
   }
   .topbar {
     height: 60px;
@@ -2248,12 +2031,6 @@ nav {
   }
   .topbar-left {
     gap: 9px;
-  }
-  .breadcrumb {
-    font-size: 10px;
-  }
-  .breadcrumb > span {
-    margin: 0 8px;
   }
   .topbar-right {
     gap: 13px;
@@ -2263,39 +2040,6 @@ nav {
   }
   .main-content {
     padding: 25px 20px 0;
-  }
-  .page-heading {
-    margin-bottom: 25px;
-    gap: 16px;
-  }
-  .page-heading .eyebrow {
-    font-size: 9px;
-  }
-  .page-heading h1 {
-    font-size: 30px;
-    margin: 10px 0;
-  }
-  .page-heading p {
-    font-size: 10px;
-    max-width: none;
-  }
-  .progress-card {
-    padding: 11px;
-    min-width: 52px;
-    max-width: 100px;
-    border-radius: 13px;
-  }
-  .progress-card > div:nth-child(2),
-  .progress-leaf {
-    display: none;
-  }
-  .progress-ring {
-    width: 40px;
-    height: 40px;
-  }
-  .progress-ring > span {
-    width: 33px;
-    height: 33px;
   }
   .week-controls {
     gap: 15px;
@@ -2755,9 +2499,6 @@ nav {
   }
   .topbar {
     padding: 0 13px;
-  }
-  .breadcrumb {
-    max-width: 160px;
   }
   .topbar-right {
     gap: 9px;
