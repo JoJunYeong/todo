@@ -60,6 +60,7 @@ import {
 import "./style.css";
 import "./planner.css";
 import "./motion.css";
+import "./search.css";
 import {
   BoardDragProvider,
   DragZone,
@@ -67,6 +68,8 @@ import {
   SortableCard,
 } from "./drag-board.jsx";
 import { MotionPresence, usePresence } from "./motion.jsx";
+import { searchContext } from "./search-context.js";
+import { MatchedText, SearchExcerpt } from "./search-result.jsx";
 import {
   dayZone,
   listZone,
@@ -384,6 +387,8 @@ function TaskCard({
   compact = false,
   pending = false,
   overlay = false,
+  searchMatch = null,
+  placement,
 }) {
   return (
     <SortableCard task={task} pending={pending} overlay={overlay}>
@@ -423,7 +428,13 @@ function TaskCard({
             disabled={pending}
             onClick={() => onOpen(task)}
           >
-            <span className="task-title">{task.text || "제목 없는 할 일"}</span>
+            <span className="task-title">
+              <MatchedText
+                text={task.text || "제목 없는 할 일"}
+                query={searchMatch?.query}
+                initialMode
+              />
+            </span>
             <span className="task-meta">
               {task.isoDate && (
                 <span>
@@ -446,6 +457,8 @@ function TaskCard({
               )}
               {!!task.freq && <Repeat2 size={12} aria-label="반복 일정" />}
             </span>
+            {placement && <span className="result-placement">{placement}</span>}
+            {searchMatch && <SearchExcerpt match={searchMatch} />}
           </button>
           {handle && (
             <button
@@ -508,6 +521,8 @@ export function Planner({ user, profile, isAdmin, store, notify }) {
     [sidebarOpen, setSidebarOpen] = useState(false),
     [panel, setPanel] = useState(null),
     [activeTask, setActiveTask] = useState(null),
+    [detailSession, setDetailSession] = useState(0),
+    [searchTarget, setSearchTarget] = useState(null),
     [online, setOnline] = useState(navigator.onLine),
     [dataError, setDataError] = useState("");
   const [hideCompleted, setHideCompleted] = useState(
@@ -696,6 +711,15 @@ export function Planner({ user, profile, isAdmin, store, notify }) {
     () => searchTasks(index, search, { status: filter, limit: searchLimit }),
     [index, search, filter, searchLimit],
   );
+  const searchPreviews = useMemo(() => {
+    const notes = new Map(index.map((item) => [item.task.id, item.noteText]));
+    return new Map(
+      results.map((task) => [
+        task.id,
+        searchContext(task, search, notes.get(task.id)),
+      ]),
+    );
+  }, [index, results, search]);
   const days = Array.from({ length: 7 }, (_, i) => addDays(start, i)),
     completed = week.filter((t) => t.done).length,
     total = week.length;
@@ -766,12 +790,15 @@ export function Planner({ user, profile, isAdmin, store, notify }) {
   const toggle = (t) => run(() => store.toggleTask(user.uid, t));
   const newTask = (text, place) =>
     run(() => store.addTask(user.uid, { text, calendarId: calId, ...place }));
-  const openTask = (t) =>
+  const openTask = (t, target = null) => {
+    setDetailSession((session) => session + 1);
+    setSearchTarget(target);
     setActiveTask(
       !t.date && !t.listId && t.freq && t.dtStart
         ? { ...t, date: t.dtStart }
         : t,
     );
+  };
   const backlogProps = {
     calendar,
     live,
@@ -805,9 +832,7 @@ export function Planner({ user, profile, isAdmin, store, notify }) {
       return Promise.reject(changed);
     }
     const peers = date
-      ? week.filter(
-          (item) => item.date === date && !!item.done === !!task.done,
-        )
+      ? week.filter((item) => item.date === date && !!item.done === !!task.done)
       : live.filter((item) => item.listId === targetList);
     return store
       .patchTask(user.uid, task, {
@@ -1411,17 +1436,14 @@ export function Planner({ user, profile, isAdmin, store, notify }) {
                   <div className="search-result" key={t.id}>
                     <TaskCard
                       task={t}
-                      onOpen={openTask}
+                      onOpen={(task) =>
+                        openTask(task, searchPreviews.get(task.id))
+                      }
                       onToggle={toggle}
                       compact
+                      searchMatch={searchPreviews.get(t.id)}
+                      placement={`${calendars.find((c) => c.id === t.calendarId)?.name || ""} · ${t.date || calendars.find((c) => c.id === t.calendarId)?.lists?.find((l) => l.id === t.listId)?.name || "언젠가"}`}
                     />
-                    <span className="result-placement">
-                      {calendars.find((c) => c.id === t.calendarId)?.name} ·{" "}
-                      {t.date ||
-                        calendar?.lists?.find((l) => l.id === t.listId)?.name ||
-                        "언젠가"}
-                    </span>
-                    {t.note && <p>{htmlText(t.note).slice(0, 180)}</p>}
                   </div>
                 ))}
                 {search && !results.length && (
@@ -1531,7 +1553,9 @@ export function Planner({ user, profile, isAdmin, store, notify }) {
           >
             {activeTask && (
               <Details
+                key={detailSession}
                 task={activeTask}
+                searchTarget={searchTarget}
                 calendars={calendars}
                 uid={user.uid}
                 store={store}

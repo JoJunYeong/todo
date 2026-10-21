@@ -35,6 +35,7 @@ import {
   savedNoteHTML,
 } from "./note-images.js";
 import { noteImageIds, imageId, MAX_NOTE_IMAGES } from "./image-data.js";
+import { SearchFocus } from "./search-focus.jsx";
 
 const safeHTML = (note, isMD) =>
   DOMPurify.sanitize(
@@ -64,6 +65,7 @@ export function Details({
   onClose,
   onSaved,
   notify,
+  searchTarget,
 }) {
   const [title, setTitle] = useState(task.text),
     [date, setDate] = useState(task.date || ""),
@@ -551,6 +553,7 @@ export function Details({
                 {checklist.map((item) => (
                   <div
                     key={item.id}
+                    data-checklist-id={item.id}
                     className={
                       "checklist-item " +
                       (item.variant === "header" ? "checklist-header" : "")
@@ -764,6 +767,12 @@ export function Details({
                 </div>
               )}
             </details>
+            <SearchFocus
+              target={searchTarget}
+              editorRef={editor}
+              titleRef={titleInput}
+              isMD={task.isMD}
+            />
           </div>
           <footer className="modal-footer">
             <button

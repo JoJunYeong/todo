@@ -1,0 +1,103 @@
+.search-result .task-open {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 8px 10px 10px;
+  text-align: left;
+}
+.search-result .task-meta {
+  justify-content: flex-start;
+}
+.search-result .task-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.search-result .result-placement {
+  margin: 0;
+  font-size: 11px;
+}
+.search-context {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.search-context-source {
+  color: #66776c;
+  font-size: 11px;
+}
+.search-excerpt {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  color: #334b3d;
+  font-size: 14px;
+  line-height: 1.65;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.search-result mark {
+  color: #243d2e;
+  background: #f9e5a1;
+  border-radius: 2px;
+  padding: 0 1px;
+  text-decoration: none;
+}
+.search-result .task-title mark {
+  color: inherit;
+}
+.dark-task .search-context-source,
+.dark-task .search-excerpt {
+  color: #f1f5f0;
+}
+.search-result .dark-task .task-title {
+  color: #f5f8f3;
+}
+.dark-task .result-placement {
+  color: #dce6dd;
+}
+.search-result .dark-task .task-title mark {
+  color: #243d2e;
+}
+.detail-modal .detail-body {
+  position: relative;
+}
+.search-focus-rect {
+  position: absolute;
+  z-index: 3;
+  pointer-events: none;
+  border-radius: 3px;
+  background: #f0c95780;
+  box-shadow: 0 0 0 2px #dab34366;
+  animation: search-found 1800ms ease-out 180ms both;
+}
+.search-focus-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+@keyframes search-found {
+  0%,
+  45% {
+    opacity: 0.4;
+  }
+  22%,
+  65% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .search-focus-rect {
+    animation: none;
+    opacity: 0.65;
+  }
+}

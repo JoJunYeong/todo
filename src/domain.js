@@ -54,12 +54,20 @@ export function monday(key = dateKey()) {
 }
 export function htmlText(value = "") {
   return String(value)
-    .replace(/<br\s*\/?\s*>|<\/(?:p|div|li|tr|h[1-6])>/gi, " ")
-    .replace(/<[^>]*>/g, " ")
+    .replace(
+      /<\/?(?:br|hr|img|p|div|li|ul|ol|tr|td|th|h[1-6]|pre|blockquote)\b[^>]*>/gi,
+      " ",
+    )
+    .replace(/<[^>]*>/g, "")
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#x([a-f\d]+);/gi, (_, n) =>
+      String.fromCodePoint(Math.min(parseInt(n, 16), 0x10ffff)),
+    )
     .replace(/&#(\d+);/g, (_, n) =>
       String.fromCodePoint(Math.min(Number(n), 0x10ffff)),
     )
@@ -81,18 +89,18 @@ export const initials = (s = "") =>
     })
     .join("");
 export function buildSearchIndex(tasks) {
-  return tasks.map((t) => ({
-    task: t,
-    title: normalize(t.text),
-    text: normalize(
-      [
-        t.text,
-        htmlText(t.note),
-        ...(t.checklist || []).map((x) => x.text),
-      ].join(" "),
-    ),
-    initials: normalize(initials(normalize(t.text))),
-  }));
+  return tasks.map((t) => {
+    const noteText = htmlText(t.note);
+    return {
+      task: t,
+      noteText,
+      title: normalize(t.text),
+      text: normalize(
+        [t.text, noteText, ...(t.checklist || []).map((x) => x.text)].join(" "),
+      ),
+      initials: normalize(initials(normalize(t.text))),
+    };
+  });
 }
 export function searchTasks(
   index,
