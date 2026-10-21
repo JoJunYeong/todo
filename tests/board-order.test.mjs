@@ -6,10 +6,56 @@ import {
   moveOrder,
   isRestingHoliday,
   canMoveCard,
+  completedLast,
 } from "../src/board-order.js";
 const a = { id: "a", order: 1024 },
   b = { id: "b", order: 2048 },
   c = { id: "c", order: 3072 };
+test("daily completion grouping preserves each status group's manual order and source data", () => {
+  const items = [
+    { ...a, done: true },
+    b,
+    { ...c, done: true },
+    { id: "d", order: 4096, done: false },
+  ];
+  const before = structuredClone(items);
+  assert.deepEqual(
+    completedLast(items).map((task) => task.id),
+    ["b", "d", "a", "c"],
+  );
+  assert.deepEqual(items, before);
+  assert.deepEqual(
+    completedLast(items.map((task) => ({ ...task, done: false }))).map(
+      (task) => task.id,
+    ),
+    ["a", "b", "c", "d"],
+  );
+  assert.deepEqual(completedLast([]), []);
+});
+test("dated drag previews keep completed cards below unfinished cards without changing backlog order", () => {
+  const done = { id: "done", done: true, order: 0 };
+  const groups = {
+    "day:2026-10-21": [a, done],
+    "list:later": [b, { ...c, done: true }],
+  };
+  const unfinished = projectTask(groups, "b", "day:2026-10-21");
+  assert.deepEqual(
+    unfinished["day:2026-10-21"].map((task) => task.id),
+    ["a", "b", "done"],
+  );
+  const completed = projectTask(groups, "c", "day:2026-10-21", "a");
+  assert.deepEqual(
+    completed["day:2026-10-21"].map((task) => task.id),
+    ["a", "c", "done"],
+  );
+  assert.deepEqual(
+    projectTask(groups, "done", "list:later", "b")["list:later"].map(
+      (task) => task.id,
+    ),
+    ["done", "b", "c"],
+  );
+  assert.deepEqual(groups["day:2026-10-21"], [a, done]);
+});
 test("cross-list drag previews move one item without mutating the saved lists", () => {
   const groups = { monday: [a, b], tuesday: [c], empty: [] };
   const moved = projectTask(groups, "b", "tuesday", "c");

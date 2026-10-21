@@ -73,6 +73,7 @@ import {
   moveOrder,
   isRestingHoliday,
   canMoveCard,
+  completedLast,
 } from "./board-order.js";
 import { useHolidays } from "./use-holidays.js";
 import { useRollover } from "./use-rollover.js";
@@ -706,11 +707,13 @@ export function Planner({ user, profile, isAdmin, store, notify }) {
           id: dayZone(date),
           date,
           label: date,
-          items: week
-            .filter(
-              (task) => task.date === date && (!hideCompleted || !task.done),
-            )
-            .sort((a, b) => (a.order || 0) - (b.order || 0)),
+          items: completedLast(
+            week
+              .filter(
+                (task) => task.date === date && (!hideCompleted || !task.done),
+              )
+              .sort((a, b) => (a.order || 0) - (b.order || 0)),
+          ),
         };
       }),
       ...(calendar?.lists || []).map((list) => ({
@@ -802,7 +805,9 @@ export function Planner({ user, profile, isAdmin, store, notify }) {
       return Promise.reject(changed);
     }
     const peers = date
-      ? week.filter((item) => item.date === date)
+      ? week.filter(
+          (item) => item.date === date && !!item.done === !!task.done,
+        )
       : live.filter((item) => item.listId === targetList);
     return store
       .patchTask(user.uid, task, {
@@ -1237,8 +1242,10 @@ export function Planner({ user, profile, isAdmin, store, notify }) {
                 </div>
                 <div className="week-board" key={start + ":" + calId}>
                   {days.map((day, i) => {
-                    const items = week.filter(
-                      (t) => t.date === day && (!hideCompleted || !t.done),
+                    const items = completedLast(
+                      week.filter(
+                        (t) => t.date === day && (!hideCompleted || !t.done),
+                      ),
                     );
                     return (
                       <DragZone

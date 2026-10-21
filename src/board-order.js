@@ -1,5 +1,9 @@
 export const dayZone = (date) => "day:" + date;
 export const listZone = (id) => "list:" + id;
+export const completedLast = (items) => [
+  ...items.filter((task) => !task.done),
+  ...items.filter((task) => task.done),
+];
 export function findTaskZone(groups, taskId) {
   return Object.keys(groups).find((id) =>
     groups[id].some((task) => task.id === taskId),
@@ -20,6 +24,7 @@ export function projectTask(groups, taskId, target, beforeId = null) {
     task,
     ...items.slice(at < 0 ? items.length : at),
   ];
+  if (target.startsWith("day:")) next[target] = completedLast(next[target]);
   return next;
 }
 export function moveOrder(peers, activeId, beforeId, now = Date.now()) {

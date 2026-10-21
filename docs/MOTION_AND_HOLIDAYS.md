@@ -8,10 +8,13 @@ Hovering previews placement without database writes. A drop writes only the move
 
 An empty public holiday appears as a short, muted gray column with its holiday name, “쉬어가는 공휴일” and an enabled add field. Creating a task or dragging a card into it expands the column over 280 ms. Removing the last task returns it to the resting state. Completed tasks hidden by the current filter still count as scheduled tasks, so filtering does not incorrectly collapse a populated holiday. Ordinary weekdays and weekends keep their normal layout. Missing holiday data is not treated as a holiday.
 
+Each dated list shows unfinished tasks first and completed tasks at the bottom. Both groups retain their existing manual order. Checking a task changes its completion status without rewriting order values; unchecking returns it to its previous position among unfinished tasks. This also applies after saving completion in the details dialog and after reload. Drag previews and drops preserve the same boundary, and a dated drop calculates order among tasks with the same completion status. Undated backlog lists retain their existing manual order.
+
 ## Verification
 
-- 47 domain tests pass, including immutable drag previews, insertion order, holiday conditions and concurrent relocation checks.
+- 49 domain tests pass, including completion grouping, immutable drag previews, insertion order, holiday conditions and concurrent relocation checks.
 - The real Planner component with an isolated synthetic store passed mouse sorting, cross-day/backlog moves, keyboard moves, mobile touch moves, edge scrolling, cancellation, failed-save recovery and reload persistence. Drag previews performed no writes; normal touch scrolling did not activate dragging.
+- Completion from a native touch checkbox and from the details dialog moved tasks below unfinished tasks. Unchecking restored their manual order, hiding/showing completed tasks retained grouping, and reload preserved it. Keyboard and mobile cross-day moves kept both completion groups ordered; attempts to cross the status boundary performed no redundant writes. Notes were preserved throughout. These additional checks used the isolated synthetic store.
 - Widths 320, 390, 768, 1024 and 1440 pixels passed holiday input/height, overflow, sidebar and memo layout checks. A 100-line memo produced no editor DOM mutations and no observed tasks of 50 ms or longer during the sampled scrolls. These are Chromium viewport checks, not physical iOS frame-rate measurements.
 - Expanding and collapsing a phone holiday animated between approximately 137 and 220 pixels. Reduced-motion mode shortened modal motion to 0.01 ms.
 - The production build passes. The main JavaScript gzip size increases by approximately 19 kB for pointer, touch and keyboard sorting. The existing startup week cache and lazy memo/auth/store chunks remain in place; this is not a new loading-speed benchmark.

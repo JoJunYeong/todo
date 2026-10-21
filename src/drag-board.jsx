@@ -29,7 +29,7 @@ import {
   arrayMove,
   defaultAnimateLayoutChanges,
 } from "@dnd-kit/sortable";
-import { findTaskZone, projectTask } from "./board-order.js";
+import { findTaskZone, projectTask, completedLast } from "./board-order.js";
 import {
   SPRING_EASING,
   useReducedMotion,
@@ -195,8 +195,9 @@ export function BoardDragProvider({
           const items = current[target],
             oldIndex = items.findIndex((task) => task.id === active.id),
             newIndex = items.findIndex((task) => task.id === over.id);
-          const sorted =
+          const moved =
             newIndex >= 0 ? arrayMove(items, oldIndex, newIndex) : items;
+          const sorted = byId[target].date ? completedLast(moved) : moved;
           current = { ...current, [target]: sorted };
           const at = sorted.findIndex((task) => task.id === active.id),
             beforeId = sorted[at + 1]?.id || null;
