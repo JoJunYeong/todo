@@ -1251,6 +1251,7 @@ export function Planner({ user, profile, isAdmin, store, notify }) {
                       className={
                         (selectedDay === d ? "chosen " : "") +
                         (d === today ? "is-today " : "") +
+                        (i > 4 ? "is-weekend " : "") +
                         (holidays.days[d] ? "is-holiday" : "")
                       }
                       aria-label={`${d} ${WEEKDAYS[i]}요일${holidays.days[d] ? " · " + holidays.days[d].join(" · ") : ""}`}

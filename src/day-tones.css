@@ -85,3 +85,50 @@
 .task-card.is-done {
   opacity: 0.56;
 }
+
+.day-column.weekend[data-day-state="past"],
+.mobile-day-picker button.is-weekend[data-day-state="past"] {
+  --day-surface: #171b19;
+  --day-heading: #111512;
+  --day-border: #3c453f;
+  --day-muted: #c5d0c8;
+}
+.day-column.weekend[data-day-state="future"],
+.mobile-day-picker button.is-weekend[data-day-state="future"] {
+  --day-surface: #242b26;
+  --day-heading: #1c231e;
+  --day-border: #455247;
+  --day-muted: #d2dbd4;
+}
+.day-column.weekend[data-day-state="today"],
+.mobile-day-picker button.is-weekend[data-day-state="today"] {
+  --day-surface: #343d36;
+  --day-heading: #2e3a30;
+  --day-border: #7b9c7d;
+  --day-muted: #edf6ed;
+}
+.day-column.weekend[data-day-state] .day-name,
+.day-column.weekend[data-day-state] .day-date-row strong,
+.mobile-day-picker button.is-weekend[data-day-state] > span,
+.mobile-day-picker button.is-weekend[data-day-state] strong {
+  color: #eef5ef;
+}
+.day-column.weekend[data-day-state].holiday-column .day-name,
+.day-column.weekend[data-day-state].holiday-column .day-date-row strong,
+.day-column.weekend[data-day-state] .holiday-name,
+.mobile-day-picker button.is-weekend[data-day-state].is-holiday > span,
+.mobile-day-picker button.is-weekend[data-day-state].is-holiday strong {
+  color: #f0aaa1;
+}
+.day-column.weekend[data-day-state="today"] .day-heading,
+.mobile-day-picker button.is-weekend[data-day-state="today"] {
+  box-shadow: inset 0 3px 0 #a1d4a0;
+}
+.mobile-day-picker
+  button.is-weekend[data-day-state].chosen:not([data-drag-over]) {
+  outline-color: #a8c8aa;
+}
+.day-column.weekend[data-day-state] .quick-add input,
+.day-column.weekend[data-day-state] .quick-add button {
+  color: var(--day-muted);
+}
