@@ -1,0 +1,87 @@
+.day-column[data-day-state="past"],
+.mobile-day-picker button[data-day-state="past"] {
+  --day-surface: #bac6bd;
+  --day-heading: #aebfae;
+  --day-border: #a0b2a4;
+  --day-muted: #354d3d;
+}
+.day-column[data-day-state="future"],
+.mobile-day-picker button[data-day-state="future"] {
+  --day-surface: #edf2eb;
+  --day-heading: #e4ecdf;
+  --day-border: #d3ded0;
+  --day-muted: #4e6354;
+}
+.day-column[data-day-state="today"],
+.mobile-day-picker button[data-day-state="today"] {
+  --day-surface: #ffffff;
+  --day-heading: #f9fff5;
+  --day-border: #a5bea4;
+  --day-muted: #3f6047;
+}
+.day-column.holiday-rest[data-day-state="past"] {
+  --day-surface: #b8c0ba;
+  --day-heading: #acb8ae;
+}
+.day-column.holiday-rest[data-day-state="future"] {
+  --day-surface: #e8ede8;
+  --day-heading: #e2e9e2;
+}
+.day-column.holiday-rest[data-day-state="today"] {
+  --day-surface: #f6faf5;
+  --day-heading: #f1f8ef;
+}
+.week-board .day-column[data-day-state] {
+  background: var(--day-surface);
+  border-color: var(--day-border);
+}
+.day-column[data-day-state] .day-heading {
+  background: var(--day-heading);
+  border-color: var(--day-border);
+}
+.day-column[data-day-state] .day-date-row > span,
+.day-column[data-day-state] .day-empty,
+.day-column[data-day-state] .quick-add,
+.day-column[data-day-state] .quick-add input::placeholder {
+  color: var(--day-muted);
+}
+.day-column[data-day-state="past"]:not(.holiday-column) .day-name,
+.day-column[data-day-state="past"]:not(.holiday-column) .day-date-row strong {
+  color: #304a38;
+}
+.day-column[data-day-state="past"].holiday-column .day-name,
+.day-column[data-day-state="past"].holiday-column .day-date-row strong,
+.day-column[data-day-state="past"] .holiday-name,
+.mobile-day-picker button[data-day-state="past"].is-holiday > span,
+.mobile-day-picker button[data-day-state="past"].is-holiday strong {
+  color: #7b302d;
+}
+.day-column[data-day-state="past"] .task-card {
+  background: color-mix(in srgb, var(--task-color) 72%, #829687);
+  border-color: #a5b6a9;
+}
+.day-column[data-day-state="future"] .task-card {
+  background: color-mix(in srgb, var(--task-color) 94%, #d4dfcf);
+}
+.day-column[data-day-state="today"] .day-heading {
+  box-shadow: inset 0 3px 0 #55805c;
+}
+.day-column[data-day-state="today"] .today-tag {
+  color: #2f5c39;
+  background: #dfeeda;
+}
+.mobile-day-picker button[data-day-state] {
+  background: var(--day-surface);
+  border: 1px solid var(--day-border);
+  color: var(--day-muted);
+}
+.mobile-day-picker button[data-day-state="today"] {
+  box-shadow: inset 0 3px 0 #55805c;
+}
+.mobile-day-picker button[data-day-state].chosen:not([data-drag-over]) {
+  outline: 2px solid #557d60;
+  outline-offset: -2px;
+}
+.task-card.is-done {
+  opacity: 0.56;
+}

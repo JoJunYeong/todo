@@ -61,6 +61,7 @@ import "./style.css";
 import "./planner.css";
 import "./motion.css";
 import "./search.css";
+import "./day-tones.css";
 import {
   BoardDragProvider,
   DragZone,
@@ -1243,6 +1244,9 @@ export function Planner({ user, profile, isAdmin, store, notify }) {
                       zone={dayZone(d)}
                       role="tab"
                       aria-selected={selectedDay === d}
+                      data-day-state={
+                        d < today ? "past" : d === today ? "today" : "future"
+                      }
                       key={d}
                       className={
                         (selectedDay === d ? "chosen " : "") +
@@ -1292,6 +1296,13 @@ export function Planner({ user, profile, isAdmin, store, notify }) {
                           (i > 4 ? "weekend" : "")
                         }
                         key={day}
+                        data-day-state={
+                          day < today
+                            ? "past"
+                            : day === today
+                              ? "today"
+                              : "future"
+                        }
                         aria-label={
                           day +
                           " " +
