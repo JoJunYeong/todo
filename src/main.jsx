@@ -81,6 +81,7 @@ import {
 } from "./board-order.js";
 import { useHolidays } from "./use-holidays.js";
 import { useRollover } from "./use-rollover.js";
+import { currentTask } from "./task-sync.js";
 import {
   readWeekPreview,
   saveWeekPreview,
@@ -530,6 +531,13 @@ export function Planner({ user, profile, isAdmin, store, notify }) {
       !!profile.settings?.hideCompleted,
     ),
     [searchLimit, setSearchLimit] = useState(60);
+  useEffect(() => {
+    setHideCompleted(!!profile.settings?.hideCompleted);
+  }, [profile.settings?.hideCompleted]);
+  useEffect(() => {
+    if (calendars.some((calendar) => calendar.id === profile.settings?.selectedCalendarId))
+      setCalId(profile.settings.selectedCalendarId);
+  }, [profile.settings?.selectedCalendarId, calendars]);
   const sidebarPresent = usePresence(sidebarOpen);
   const holidays = useHolidays(start, online);
   const rolloverError = useRollover({
@@ -637,6 +645,7 @@ export function Planner({ user, profile, isAdmin, store, notify }) {
           startTransition(() => {
             setTasks(items);
             setSync(meta);
+            if (!meta.cached) setDataError("");
             if (!meta.cached || items.length) setLoaded(true);
           });
         },
@@ -1566,7 +1575,7 @@ export function Planner({ user, profile, isAdmin, store, notify }) {
             {activeTask && (
               <Details
                 key={detailSession}
-                task={activeTask}
+                task={currentTask(tasks, activeTask)}
                 searchTarget={searchTarget}
                 calendars={calendars}
                 uid={user.uid}
@@ -1727,6 +1736,7 @@ function Backlogs({
   );
 }
 function App() {
+  const authIdentity = useRef(null);
   const [authReady, setAuthReady] = useState(false),
     [user, setUser] = useState(null),
     [profile, setProfile] = useState(null),
@@ -1753,12 +1763,14 @@ function App() {
         unsub = a.watchAuth((u) => {
           rememberSession(previewStorage(), u?.uid);
           setUser(u);
+          setBootError("");
           setAuthReady(true);
-          if (!u) {
+          if (authIdentity.current !== (u?.uid || null)) {
             setProfile(null);
             setAdmin(false);
             setStore(null);
           }
+          authIdentity.current = u?.uid || null;
         });
       })
       .catch((e) => {
@@ -1789,11 +1801,12 @@ function App() {
           (p, meta) => {
             if (cancelled) return;
             setProfile(p);
+            if (p && !meta?.cached) setBootError("");
             if (!p && !meta?.cached && !creating) {
               creating = true;
-              s.ensureProfile(user).catch(
-                (e) => !cancelled && setBootError(authModule.authMessage(e)),
-              );
+              s.ensureProfile(user)
+                .catch((e) => !cancelled && setBootError(authModule.authMessage(e)))
+                .finally(() => { creating = false; });
             }
             if (
               p?.active &&
@@ -1815,11 +1828,11 @@ function App() {
                 "error",
               );
           },
-          (e) => setBootError(authModule.authMessage(e)),
+          (e) => !cancelled && setBootError(authModule.authMessage(e)),
         );
         b = s.watchAdmin(user.uid, setAdmin);
       })
-      .catch((e) => setBootError(authModule.authMessage(e)));
+      .catch((e) => !cancelled && setBootError(authModule.authMessage(e)));
     return () => {
       cancelled = true;
       a?.();

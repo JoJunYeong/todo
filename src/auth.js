@@ -73,7 +73,7 @@ export function authMessage(error) {
       "auth/network-request-failed": "인터넷 연결을 확인해 주세요.",
       "auth/weak-password": "더 긴 비밀번호를 사용해 주세요.",
       "permission-denied":
-        "이 계정에서는 접근할 수 없습니다. 관리자에게 사용 상태를 확인해 주세요.",
+        "계정 권한을 확인하지 못했어요. 잠시 후 자동으로 다시 연결합니다.",
     }[code] ||
     error?.message ||
     "잠시 후 다시 시도해 주세요."

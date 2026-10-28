@@ -15,7 +15,12 @@ import {
   updateDoc,
   writeBatch,
   setLogLevel,
+  onSnapshot,
+  getDocFromServer,
+  disableNetwork,
+  enableNetwork,
 } from "firebase/firestore";
+import { watchWithSync } from "../src/cloud-sync.js";
 setLogLevel("silent");
 
 // This suite must never connect to a real project or an unowned emulator.
@@ -185,6 +190,55 @@ test("unknown collection names and cross-user import receipts remain private", a
   await assertSucceeds(
     setDoc(doc(db, "users", "alice", "imports", "one"), { status: "verified" }),
   );
+});
+test("two clients of the same account remain connected and see each other's edits", async () => {
+  const first = user("alice"), second = user("alice");
+  const target = doc(first, "users", "alice", "tasks", "one");
+  let stop;
+  try {
+    const changed = new Promise((resolve, reject) => {
+      stop = onSnapshot(doc(second, "users", "alice", "tasks", "one"), (snapshot) => {
+        if (snapshot.data()?.text === "Changed on first device") resolve();
+      }, reject);
+    });
+    await updateDoc(target, { text: "Changed on first device" });
+    await changed;
+    await updateDoc(doc(second, "users", "alice", "tasks", "one"), { done: true });
+    const latest = await getDocFromServer(target);
+    assert.equal(latest.data().done, true);
+    assert.equal(latest.data().text, "Changed on first device");
+    await updateDoc(doc(second, "users", "alice"), { "settings.hideCompleted": true });
+    assert.equal((await getDocFromServer(doc(first, "users", "alice"))).data().settings.hideCompleted, true);
+  } finally { stop?.(); }
+});
+test("an offline client's queued field edit preserves another device's unrelated change", async () => {
+  const first = user("alice"), second = user("alice");
+  const target = doc(second, "users", "alice", "tasks", "one");
+  await getDocFromServer(target);
+  await disableNetwork(second);
+  const pending = updateDoc(target, { note: "Offline draft" });
+  try {
+    await updateDoc(doc(first, "users", "alice", "tasks", "one"), { text: "Remote title" });
+  } finally { await enableNetwork(second); }
+  await pending;
+  const value = (await getDocFromServer(target)).data();
+  assert.equal(value.note, "Offline draft");
+  assert.equal(value.text, "Remote title");
+});
+test("a denied listener recovers after access is restored without weakening the rules", { timeout: 10000 }, async () => {
+  await env.withSecurityRulesDisabled((c) => updateDoc(doc(c.firestore(), "users", "alice"), { active: false }));
+  const db = user("alice");
+  let denied, recovered;
+  const deniedPromise = new Promise((resolve) => { denied = resolve; });
+  const recoveredPromise = new Promise((resolve) => { recovered = resolve; });
+  const stop = watchWithSync((next, error) => onSnapshot(doc(db, "users", "alice", "tasks", "one"), next, error),
+    (snapshot) => { if (!snapshot.metadata.fromCache && snapshot.exists()) recovered(); },
+    (error) => { if (error.code === "permission-denied") denied(); }, { interval: 100 });
+  try {
+    await deniedPromise;
+    await env.withSecurityRulesDisabled((c) => updateDoc(doc(c.firestore(), "users", "alice"), { active: true }));
+    await recoveredPromise;
+  } finally { stop(); }
 });
 const capture = () => ({
   id: "capture",

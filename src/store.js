@@ -21,7 +21,8 @@ import {
   connectFirestoreEmulator,
 } from "firebase/firestore";
 import { validateNoteImage, noteImageIds, imageId } from "./image-data.js";
-import { app } from "./auth.js";
+import { app, auth } from "./auth.js";
+import { watchWithSync } from "./cloud-sync.js";
 import { rolloverPatch, ROLLOVER_START } from "./rollover.js";
 import {
   parseBackup,
@@ -50,6 +51,13 @@ if (
 )
   connectFirestoreEmulator(db, "127.0.0.1", 18871);
 const ref = (uid, kind, id) => doc(db, "users", uid, kind, id);
+const watch = (target, next, error) =>
+  watchWithSync(
+    (value, failure) => onSnapshot(target, { includeMetadataChanges: true }, value, failure),
+    next,
+    error,
+    { beforeRetry: () => auth.currentUser?.getIdToken(true) },
+  );
 export async function ensureProfile(user) {
   const target = doc(db, "users", user.uid);
   if (typeof navigator !== "undefined" && !navigator.onLine) {
@@ -72,9 +80,8 @@ export async function ensureProfile(user) {
   });
 }
 export const watchProfile = (uid, next, error) =>
-  onSnapshot(
+  watch(
     doc(db, "users", uid),
-    { includeMetadataChanges: true },
     (s) =>
       next(s.exists() ? { id: s.id, ...s.data() } : null, {
         cached: s.metadata.fromCache,
@@ -82,13 +89,13 @@ export const watchProfile = (uid, next, error) =>
     error,
   );
 export const watchAdmin = (uid, next) =>
-  onSnapshot(
+  watch(
     doc(db, "admins", uid),
     (s) => next(s.exists()),
     () => next(false),
   );
 export const watchUsers = (next, error) =>
-  onSnapshot(
+  watch(
     collection(db, "users"),
     (s) => next(s.docs.map((d) => ({ id: d.id, ...d.data() }))),
     error,
@@ -96,9 +103,8 @@ export const watchUsers = (next, error) =>
 export const updateUser = (uid, patch) =>
   updateDoc(doc(db, "users", uid), patch);
 export const watchCalendars = (uid, next, error) =>
-  onSnapshot(
+  watch(
     collection(db, "users", uid, "calendars"),
-    { includeMetadataChanges: true },
     (s) =>
       next(
         s.docs
@@ -109,9 +115,8 @@ export const watchCalendars = (uid, next, error) =>
     error,
   );
 export const watchTasks = (uid, next, error) =>
-  onSnapshot(
+  watch(
     collection(db, "users", uid, "tasks"),
-    { includeMetadataChanges: true },
     (s) =>
       next(
         s.docs.map((d) => ({ ...d.data(), id: d.id })),
@@ -219,16 +224,9 @@ export async function editTask(uid, task, patch, scope = "single") {
     const linked = all.docs.filter(
       (d) => d.id === baseId || d.data().recurringTodoId === baseId,
     );
-    const seriesPatch = {
-      text: patch.text,
-      note: patch.note,
-      color: patch.color,
-      checklist: patch.checklist,
-      freq: patch.freq,
-      recurrence: patch.recurrence,
-      ...("isMD" in patch ? { isMD: patch.isMD } : {}),
-      updatedAt: Date.now(),
-    };
+    const seriesPatch = { updatedAt: Date.now() };
+    for (const key of ["text", "note", "color", "checklist", "freq", "recurrence", "isMD"])
+      if (key in patch) seriesPatch[key] = patch[key];
     for (let i = 0; i < linked.length; i += 100) {
       const batch = writeBatch(db);
       for (const d of linked.slice(i, i + 100))
@@ -241,7 +239,7 @@ export async function editTask(uid, task, patch, scope = "single") {
     task.freq &&
     !task.recurringTodoId &&
     task.date &&
-    patch.freq === task.freq
+    (!Object.hasOwn(patch, "freq") || patch.freq === task.freq)
   ) {
     return saveTask(
       uid,

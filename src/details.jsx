@@ -36,6 +36,7 @@ import {
 } from "./note-images.js";
 import { noteImageIds, imageId, MAX_NOTE_IMAGES } from "./image-data.js";
 import { SearchFocus } from "./search-focus.jsx";
+import { editableTask, changedTaskFields, conflictingTaskFields, sameValue } from "./task-sync.js";
 
 const safeHTML = (note, isMD) =>
   DOMPurify.sanitize(
@@ -83,6 +84,7 @@ export function Details({
     [scope, setScope] = useState("single"),
     [preparingImages, setPreparingImages] = useState(false),
     [viewer, setViewer] = useState(null);
+  const baseline = useRef(editableTask(task));
   const titleInput = useRef(),
     editor = useRef(),
     imageInput = useRef(),
@@ -129,6 +131,34 @@ export function Details({
       recurrence,
       checklist,
     }) !== initial.current;
+  const remoteChanged = !sameValue(baseline.current, editableTask(task));
+  function refreshDraft() {
+    const value = editableTask(task);
+    setTitle(value.text);
+    setDate(value.date || "");
+    setListId(value.listId || "");
+    setCalendarId(value.calendarId);
+    setColor(value.color);
+    setDone(value.done);
+    setFreq(value.freq);
+    setRecurrence(value.recurrence || "");
+    setChecklist(value.checklist);
+    setNoteDirty(false);
+    setError("");
+    baseline.current = value;
+    initial.current = JSON.stringify({
+      title: value.text, date: value.date || "", listId: value.listId || "",
+      calendarId: value.calendarId, color: value.color, done: value.done,
+      freq: value.freq, recurrence: value.recurrence || "", checklist: value.checklist,
+    });
+    if (editor.current) {
+      editor.current.innerHTML = safeHTML(value.note, value.isMD);
+      hydrateImages();
+    }
+  }
+  useEffect(() => {
+    if (remoteChanged && !dirty && !saving && !preparingImages) refreshDraft();
+  }, [task, remoteChanged, dirty, saving, preparingImages]);
   const close = useCallback(() => {
     if (saving) return;
     if (
@@ -304,6 +334,10 @@ export function Details({
   async function save(e) {
     e.preventDefault();
     if (saving || preparingImages) return;
+    if (task.deleted || task.isBaseDeleted) {
+      setError("다른 기기에서 이 항목을 휴지통으로 옮겼어요. 목록에서 상태를 확인해 주세요.");
+      return;
+    }
     if (!title.trim()) {
       setError("할 일의 제목을 입력해 주세요.");
       return;
@@ -321,7 +355,19 @@ export function Details({
     try {
       const note = noteDirty
         ? savedNoteHTML(editor.current, (html) => DOMPurify.sanitize(html))
-        : (task.note ?? "");
+        : baseline.current.note;
+      const patch = changedTaskFields(baseline.current, {
+        text: title.trim(),
+        date: date || null,
+        listId: date ? null : listId,
+        calendarId, color, done,
+        freq: Number(freq),
+        recurrence: Number(freq) === 7 ? recurrence : null,
+        checklist, note,
+        isMD: noteDirty ? false : baseline.current.isMD,
+      });
+      if (conflictingTaskFields(baseline.current, editableTask(task), patch).length)
+        throw Error("다른 기기에서 같은 내용을 수정했어요. 입력한 내용은 유지됩니다. 최신 내용을 불러온 뒤 다시 확인해 주세요.");
       const ids = noteImageIds(note);
       const pending = ids
         .map((id) => stagedImages.current.get(id))
@@ -331,22 +377,11 @@ export function Details({
           "새 이미지를 저장하려면 인터넷 연결이 필요해요. 메모를 열어 둔 채 연결 후 다시 저장해 주세요.",
         );
       for (const image of pending) await store.saveNoteImage(uid, image);
-      const patch = {
-        text: title.trim(),
-        date: date || null,
-        listId: date ? null : listId,
-        calendarId,
-        color,
-        done,
-        freq: Number(freq),
-        recurrence: Number(freq) === 7 ? recurrence : null,
-        checklist,
-        note,
-        ...(noteDirty ? { isMD: false } : {}),
-        ...(freq && !task.dtStart ? { dtStart: date || dateKey() } : {}),
-        updatedAt: Date.now(),
-      };
-      await store.editTask(uid, task, patch, scope);
+      if (Object.keys(patch).length) {
+        if (freq && !task.dtStart) patch.dtStart = date || dateKey();
+        patch.updatedAt = Date.now();
+        await store.editTask(uid, task, patch, scope);
+      }
       notify("변경사항을 저장했어요.");
       onSaved();
     } catch (e) {
@@ -394,6 +429,19 @@ export function Details({
                 maxLength={10000}
               />
             </div>
+            {(task.deleted || task.isBaseDeleted) ? (
+              <p className="subtle-info" role="status">다른 기기에서 이 항목을 휴지통으로 옮겼어요. 작성 중인 내용은 유지됩니다.</p>
+            ) : remoteChanged && dirty && (
+              <div className="subtle-info" role="status">
+                <span>다른 기기에서 변경했어요. 작성 중인 내용은 유지됩니다.</span>
+                <button type="button" className="text-button" disabled={saving || preparingImages}
+                  onClick={() => {
+                    if (confirm("작성 중인 내용을 버리고 다른 기기의 최신 내용을 불러올까요?")) refreshDraft();
+                  }}>
+                  최신 내용 불러오기
+                </button>
+              </div>
+            )}
             <section className="note-section">
               <h3>
                 <FileText size={16} />
