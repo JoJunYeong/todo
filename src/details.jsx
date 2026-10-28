@@ -3,7 +3,6 @@ import React, {
   useEffect,
   useMemo,
   useRef,
-  useCallback,
   useLayoutEffect,
 } from "react";
 import DOMPurify from "dompurify";
@@ -85,6 +84,7 @@ export function Details({
     [preparingImages, setPreparingImages] = useState(false),
     [viewer, setViewer] = useState(null);
   const baseline = useRef(editableTask(task));
+  const savingRef = useRef(false);
   const titleInput = useRef(),
     editor = useRef(),
     imageInput = useRef(),
@@ -120,6 +120,7 @@ export function Details({
   const dirty =
     noteDirty ||
     preparingImages ||
+    !!newItem.trim() ||
     JSON.stringify({
       title,
       date,
@@ -159,14 +160,23 @@ export function Details({
   useEffect(() => {
     if (remoteChanged && !dirty && !saving && !preparingImages) refreshDraft();
   }, [task, remoteChanged, dirty, saving, preparingImages]);
-  const close = useCallback(() => {
-    if (saving) return;
+  function close() {
+    if (savingRef.current) return;
+    if (preparingImages) {
+      setError("이미지를 준비 중이에요. 준비가 끝나면 다시 닫아 주세요.");
+      return;
+    }
+    if (!dirty) onClose();
+    else void save(undefined, true);
+  }
+  function cancel() {
+    if (savingRef.current || preparingImages) return;
     if (
       !dirty ||
       confirm("아직 저장하지 않은 변경사항이 있어요. 창을 닫을까요?")
     )
       onClose();
-  }, [dirty, saving, onClose]);
+  }
   useEffect(() => {
     alive.current = true;
     if (editor.current) {
@@ -331,9 +341,9 @@ export function Details({
     document.execCommand(command, false, value);
     setNoteDirty(true);
   };
-  async function save(e) {
-    e.preventDefault();
-    if (saving || preparingImages) return;
+  async function save(e, automatic = false) {
+    e?.preventDefault();
+    if (savingRef.current || preparingImages) return;
     if (task.deleted || task.isBaseDeleted) {
       setError("다른 기기에서 이 항목을 휴지통으로 옮겼어요. 목록에서 상태를 확인해 주세요.");
       return;
@@ -350,6 +360,7 @@ export function Details({
       setError("사용자 지정 반복 규칙을 입력해 주세요.");
       return;
     }
+    savingRef.current = true;
     setSaving(true);
     setError("");
     try {
@@ -363,7 +374,11 @@ export function Details({
         calendarId, color, done,
         freq: Number(freq),
         recurrence: Number(freq) === 7 ? recurrence : null,
-        checklist, note,
+        checklist: newItem.trim() ? [...checklist, {
+          id: crypto.randomUUID(), text: newItem.trim(), done: false,
+          indent: 0, variant: "checklistItem",
+        }] : checklist,
+        note,
         isMD: noteDirty ? false : baseline.current.isMD,
       });
       if (conflictingTaskFields(baseline.current, editableTask(task), patch).length)
@@ -382,16 +397,19 @@ export function Details({
         patch.updatedAt = Date.now();
         await store.editTask(uid, task, patch, scope);
       }
-      notify("변경사항을 저장했어요.");
+      notify(automatic ? "자동 저장했어요." : "변경사항을 저장했어요.");
       onSaved();
     } catch (e) {
       setError(authMessage(e));
     } finally {
-      setSaving(false);
+      savingRef.current = false;
+      if (alive.current) setSaving(false);
     }
   }
   async function remove() {
+    if (savingRef.current || preparingImages) return;
     if (!confirm("이 항목을 휴지통으로 옮길까요?")) return;
+    savingRef.current = true;
     setSaving(true);
     try {
       await store.deleteTask(uid, task);
@@ -399,7 +417,9 @@ export function Details({
       onSaved();
     } catch (e) {
       setError(authMessage(e));
-      setSaving(false);
+    } finally {
+      savingRef.current = false;
+      if (alive.current) setSaving(false);
     }
   }
   return (
@@ -833,7 +853,7 @@ export function Details({
               휴지통으로
             </button>
             <div>
-              <button type="button" className="secondary" onClick={close}>
+              <button type="button" className="secondary" onClick={cancel} disabled={saving || preparingImages}>
                 취소
               </button>
               <button className="primary" disabled={saving || preparingImages}>
@@ -846,6 +866,11 @@ export function Details({
               </button>
             </div>
           </footer>
+          {saving && (
+            <p className="autosave-status" role="status">
+              {navigator.onLine ? "변경사항을 저장하고 있어요…" : "연결되면 저장을 완료해요. 입력한 내용은 유지됩니다."}
+            </p>
+          )}
           {error && (
             <p className="form-error" role="alert">
               {error}

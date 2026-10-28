@@ -1,0 +1,73 @@
+/* Saturday and Sunday share a column; phone day navigation stays unchanged. */
+@media (min-width: 768px) {
+  .week-board {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+    gap: 1px;
+    background: var(--planner-border, var(--line));
+  }
+  .week-board > .day-column:nth-child(n) {
+    grid-column: auto;
+    min-height: 0;
+    border: 0;
+  }
+  .week-board > .day-column:nth-child(-n + 5) {
+    grid-row: 1 / span 2;
+  }
+  .week-board > .day-column:nth-child(6) {
+    grid-column: 6;
+    grid-row: 1;
+  }
+  .week-board > .day-column:nth-child(7) {
+    grid-column: 6;
+    grid-row: 2;
+  }
+  @container planner (max-width: 1150px) {
+    .week-board {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-rows: repeat(4, minmax(0, 1fr));
+    }
+    .week-board > .day-column:nth-child(-n + 5) {
+      min-height: 220px;
+    }
+    .week-board > .day-column:nth-child(-n + 3) {
+      grid-row: 1 / span 2;
+    }
+    .week-board > .day-column:nth-child(4) {
+      grid-column: 1;
+      grid-row: 3 / span 2;
+    }
+    .week-board > .day-column:nth-child(5) {
+      grid-column: 2;
+      grid-row: 3 / span 2;
+    }
+    .week-board > .day-column:nth-child(6) {
+      grid-column: 3;
+      grid-row: 3;
+    }
+    .week-board > .day-column:nth-child(7) {
+      grid-column: 3;
+      grid-row: 4;
+    }
+  }
+}
+
+.detail-modal .editor-toolbar {
+  position: sticky;
+  top: -14px;
+  z-index: 5;
+  background: #fafcf7;
+  box-shadow: 0 2px 5px #26382f12;
+}
+.autosave-status {
+  flex: none;
+  margin: 0;
+  padding: 0 20px 10px;
+  color: #52665a;
+  font-size: 12px;
+}
+@media (max-width: 767px) {
+  .detail-modal .editor-toolbar {
+    top: -10px;
+  }
+}

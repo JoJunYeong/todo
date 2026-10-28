@@ -62,6 +62,7 @@ import "./planner.css";
 import "./motion.css";
 import "./search.css";
 import "./day-tones.css";
+import "./planner-refinements.css";
 import {
   BoardDragProvider,
   DragZone,
@@ -119,6 +120,7 @@ const loadStore = () =>
 
 export function Modal({ title, onClose, children, className = "" }) {
   const box = useRef();
+  const backdropPress = useRef(false);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   useEffect(() => {
@@ -169,7 +171,11 @@ export function Modal({ title, onClose, children, className = "" }) {
   return (
     <div
       className="modal-backdrop"
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+      onPointerDown={(e) => { backdropPress.current = e.target === e.currentTarget; }}
+      onClick={(e) => {
+        if (backdropPress.current && e.target === e.currentTarget) onClose();
+        backdropPress.current = false;
+      }}
     >
       <section
         ref={box}
