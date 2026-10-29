@@ -23,4 +23,4 @@ jobs:
           distribution: temurin
           java-version: '21'
       - name: Verify account isolation and administrator rules
-        run: npx --yes firebase-tools@15.34.0 emulators:exec --project demo-daynote-ein6xs --only auth,firestore "npm run test:rules && npm run test:sync"
+        run: npx --yes firebase-tools@15.34.0 emulators:exec --project demo-daynote-ein6xs --only auth,firestore "npm run test:rules && npm run test:sync && npm run test:ai"

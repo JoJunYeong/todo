@@ -8,11 +8,13 @@ Node.js 22.12 이상에서 `npm ci`, `npm run dev`. `npm test`는 날짜·검색
 
 계정별 접근 제한과 관리자 권한은 Java 21 이상에서 `npx firebase-tools@15.34.0 emulators:exec --project demo-daynote-ein6xs --only firestore "npm run test:rules"`로 별도 검사한다. 테스트는 실제 프로젝트 데이터에 연결하지 않는다.
 
-같은 계정의 독립 로그인과 양방향 동기화는 Auth와 Firestore 에뮬레이터를 함께 켜고 `npm run test:sync`로 검사한다. 한 번에 실행하려면 `npx firebase-tools@15.34.0 emulators:exec --project demo-daynote-ein6xs --only auth,firestore "npm run test:rules && npm run test:sync"`를 사용한다.
+같은 계정의 독립 로그인과 양방향 동기화는 Auth와 Firestore 에뮬레이터를 함께 켜고 `npm run test:sync`로 검사한다. AI 위임 권한과 실제 REST API는 `npm run test:ai`로 검사한다. 한 번에 실행하려면 `npx firebase-tools@15.34.0 emulators:exec --project demo-daynote-ein6xs --only auth,firestore "npm run test:rules && npm run test:sync && npm run test:ai"`를 사용한다.
 
 실제 브라우저와 데이터 검증 결과는 [검증 기록](docs/VALIDATION.md)에, 화면 개선의 참고 사례와 비교 결과는 [가독성 검토](docs/UX_REVIEW.md)에 정리했다.
 
 ## 제공 기능
+
+- 설정의 AI 연결에서 AI별 읽기/쓰기 권한과 유효 기간을 지정하고 개별 폐기한다. AI용 프롬프트, Node.js JSON 클라이언트, stdio MCP, 실제 HTTPS API의 OpenAPI 설명서를 제공한다. [AI 연결 안내](https://jojunyeong.github.io/todo/ai-guide.html)와 [개발 안내](docs/AI_API.md) 참조.
 
 - 주간 일정, 모바일 요일 선택, 태블릿 그리드, 캘린더와 날짜 없는 목록
 - 완료 상태, 날짜 이동 및 드래그 정렬, 색상, 서식 있는 메모, 체크리스트, 반복 일정

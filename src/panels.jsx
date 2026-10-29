@@ -15,6 +15,7 @@ import {
 import { Modal } from "./main.jsx";
 import { dateKey, parseBackup, backupStats } from "./domain.js";
 import { changePassword, authMessage } from "./auth.js";
+import AiPanel from "./ai-panel.jsx";
 
 const download = (name, data) => {
   const url = URL.createObjectURL(
@@ -105,6 +106,7 @@ export function Preferences({
         <button
           role="tab"
           aria-selected={tab === "general"}
+          disabled={busy}
           onClick={() => setTab("general")}
         >
           내 계정
@@ -112,6 +114,7 @@ export function Preferences({
         <button
           role="tab"
           aria-selected={tab === "backup"}
+          disabled={busy}
           onClick={() => setTab("backup")}
         >
           데이터 및 백업
@@ -119,9 +122,18 @@ export function Preferences({
         <button
           role="tab"
           aria-selected={tab === "password"}
+          disabled={busy}
           onClick={() => setTab("password")}
         >
           비밀번호
+        </button>
+        <button
+          role="tab"
+          aria-selected={tab === "ai"}
+          disabled={busy}
+          onClick={() => setTab("ai")}
+        >
+          AI 연결
         </button>
       </div>
       <div className="settings-body">
@@ -304,6 +316,8 @@ export function Preferences({
               보이는 한 주만 가져오는 방식이 아니에요.
             </p>
           </>
+        ) : tab === "ai" ? (
+          <AiPanel uid={uid} notify={notify} onBusyChange={setBusy} />
         ) : (
           <>
             <div className="settings-intro">

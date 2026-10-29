@@ -6,6 +6,29 @@ service cloud.firestore {
     function active(uid) { return get(/databases/$(database)/documents/users/$(uid)).data.active == true; }
     function admin() { return signedIn() && active(request.auth.uid) && exists(/databases/$(database)/documents/admins/$(request.auth.uid)); }
     function privateAccess(uid) { return own(uid) && active(uid); }
+    function aiAccess(uid, scope) {
+      let path = /databases/$(database)/documents/users/$(uid)/aiConnections/$(request.auth.uid);
+      return signedIn() && active(uid) && exists(path)
+        && get(path).data.revoked == false
+        && get(path).data.expiresAt > request.time.toMillis()
+        && scope in get(path).data.scopes;
+    }
+    function validAiTask(uid, taskId) {
+      let data = request.resource.data;
+      return data.id == taskId && data.text is string && data.text.size() > 0 && data.text.size() <= 10000
+        && data.done is bool && data.calendarId is string
+        && exists(/databases/$(database)/documents/users/$(uid)/calendars/$(data.calendarId))
+        && (data.date == null || (data.date is string && data.date.matches('^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$')))
+        && (!('note' in data) || data.note == null || (data.note is string && data.note.size() <= 800000))
+        && (!('deleted' in data) || data.deleted is bool)
+        && (!('checklist' in data) || (data.checklist is list && data.checklist.size() <= 200))
+        && data.updatedAt is int
+        && ((request.method == 'create'
+          && data.keys().hasOnly(['id','text','done','calendarId','date','note','color','listId','checklist','freq','order','createdAt','updatedAt'])
+          && data.freq == 0 && data.createdAt is int)
+          || (request.method == 'update'
+          && data.diff(resource.data).affectedKeys().hasOnly(['text','done','calendarId','date','note','color','checklist','order','deleted','updatedAt'])));
+    }
     match /admins/{uid} {
       allow get: if own(uid);
       allow list, write: if false;
@@ -29,17 +52,18 @@ service cloud.firestore {
         && request.resource.data.active is bool);
       allow delete: if false;
       match /tasks/{taskId} {
-        allow read: if privateAccess(uid);
+        allow read: if privateAccess(uid) || aiAccess(uid, 'read');
         allow create, update: if privateAccess(uid)
           && request.resource.data.id == taskId
           && request.resource.data.text is string && request.resource.data.text.size() <= 10000
           && request.resource.data.done is bool
           && request.resource.data.calendarId is string
           && (!('note' in request.resource.data) || request.resource.data.note == null || (request.resource.data.note is string && request.resource.data.note.size() <= 800000));
+        allow create, update: if aiAccess(uid, 'write') && validAiTask(uid, taskId);
         allow delete: if false;
       }
       match /calendars/{calendarId} {
-        allow read: if privateAccess(uid);
+        allow read: if privateAccess(uid) || aiAccess(uid, 'read');
         allow create, update: if privateAccess(uid)
           && request.resource.data.id == calendarId
           && request.resource.data.name is string && request.resource.data.name.size() <= 200
@@ -67,6 +91,40 @@ service cloud.firestore {
       match /imports/{importId} {
         allow read, create, update: if privateAccess(uid);
         allow delete: if false;
+      }
+      match /aiConnections/{agentUid} {
+        function validConnection() {
+          let data = request.resource.data;
+          return data.keys().hasOnly(['name','scopes','createdAt','expiresAt','revoked'])
+            && data.name is string && data.name.size() > 0 && data.name.size() <= 80
+            && data.scopes is list && data.scopes.hasAll(['read'])
+            && data.scopes.hasOnly(['read','write']) && data.scopes.size() <= 2
+            && data.createdAt is int && data.expiresAt is int
+            && data.expiresAt > request.time.toMillis()
+            && data.expiresAt <= request.time.toMillis() + 31622400000
+            && data.revoked is bool;
+        }
+        allow get: if privateAccess(uid) || (own(agentUid) && aiAccess(uid, 'read'));
+        allow list: if privateAccess(uid);
+        allow create: if privateAccess(uid) && agentUid != uid
+          && agentUid.matches('^[A-Za-z0-9_-]{1,128}$') && validConnection()
+          && request.resource.data.revoked == false;
+        allow update: if privateAccess(uid)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','scopes','expiresAt','revoked'])
+          && (validConnection() || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['revoked']) && request.resource.data.revoked == true));
+        allow delete: if false;
+        match /requests/{requestId} {
+          allow read: if privateAccess(uid) || (own(agentUid) && aiAccess(uid, 'read'));
+          allow create: if own(agentUid) && aiAccess(uid, 'write')
+            && requestId.matches('^[a-f0-9]{64}$')
+            && request.resource.data.keys().hasOnly(['operation','taskId','contentHash','createdAt'])
+            && request.resource.data.operation in ['createTask','updateTask','appendNote']
+            && request.resource.data.taskId is string
+            && request.resource.data.taskId.matches('^[A-Za-z0-9_-]{1,128}$')
+            && request.resource.data.contentHash.matches('^[a-f0-9]{64}$')
+            && request.resource.data.createdAt is int;
+          allow update, delete: if false;
+        }
       }
     }
     match /{document=**} { allow read, write: if false; }
