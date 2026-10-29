@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "sourceCommit": "30175a86d423a8a20fcc42eecc4e76a2080616b4",
+  "rulesSha256": "530e3fe6f54524a4488f3c70c00e5987e2a2c6678ec597a6160d8cf75c27e58b",
+  "features": [
+    "delegated-auth",
+    "https-rest",
+    "stdio-mcp",
+    "ai-instructions"
+  ]
+}
