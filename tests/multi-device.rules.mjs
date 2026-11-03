@@ -3,8 +3,9 @@ import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { initializeApp, deleteApp } from "firebase/app";
 import { getAuth, connectAuthEmulator, createUserWithEmailAndPassword, signInWithEmailAndPassword, deleteUser } from "firebase/auth";
-import { getFirestore, connectFirestoreEmulator, doc, setDoc, updateDoc, getDocFromServer, onSnapshot } from "firebase/firestore";
+import { getFirestore, connectFirestoreEmulator, doc, setDoc, updateDoc, getDocFromServer, onSnapshot, writeBatch } from "firebase/firestore";
 import { watchWithSync } from "../src/cloud-sync.js";
+import { getSeriesDocuments } from "../src/series-documents.js";
 
 if (process.env.FIRESTORE_EMULATOR_HOST !== "127.0.0.1:18871" || process.env.FIREBASE_AUTH_EMULATOR_HOST !== "127.0.0.1:19099")
   throw Error("Start the dedicated local Daynote Auth and Firestore emulators.");
@@ -43,6 +44,19 @@ test("independent sign-ins with the same credentials keep both sessions and sync
     assert.equal(latest.note, "Second device");
     assert.equal(first.auth.currentUser.uid, user.uid);
     assert.equal(second.auth.currentUser.uid, user.uid);
+    const base = ["users", user.uid, "tasks"];
+    await Promise.all([
+      setDoc(doc(first.db, ...base, "series"), { id: "series", text: "Series", done: false, calendarId: "personal", freq: 1 }),
+      setDoc(doc(first.db, ...base, "exception"), { id: "exception", text: "Series", done: false, calendarId: "personal", recurringTodoId: "series" }),
+      setDoc(doc(first.db, ...base, "unrelated"), { id: "unrelated", text: "Keep me", done: false, calendarId: "personal", recurringTodoId: "other" }),
+    ]);
+    const linked = await getSeriesDocuments(first.db, user.uid, "series");
+    assert.deepEqual(linked.map(item => item.id).sort(), ["exception", "series"]);
+    const batch = writeBatch(first.db);
+    for (const item of linked) batch.update(item.ref, { text: "Updated" });
+    await batch.commit();
+    assert.equal((await getDocFromServer(doc(second.db, ...base, "exception"))).data().text, "Updated");
+    assert.equal((await getDocFromServer(doc(second.db, ...base, "unrelated"))).data().text, "Keep me");
   } finally {
     stop?.();
     if (clients[0].auth.currentUser) await deleteUser(clients[0].auth.currentUser);

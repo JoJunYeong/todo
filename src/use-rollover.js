@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { rolloverCandidates } from "./rollover.js";
+import { retryDelay } from "./cloud-sync.js";
 
 export function useRollover({ uid, store, tasks, today, ready, enabled }) {
   const candidates = rolloverCandidates(tasks, today).slice(0, 20);
@@ -12,18 +13,18 @@ export function useRollover({ uid, store, tasks, today, ready, enabled }) {
       setError("");
       return;
     }
-    let active = true,
+    let active = true, failures = 0,
       timer;
     const run = async () => {
       try {
         await store.rolloverTasks(uid, candidates, today);
         if (active) setError("");
-      } catch {
+      } catch (cause) {
         if (!active) return;
         setError(
           "미완료 할 일을 오늘로 옮기지 못했어요. 잠시 후 자동으로 다시 시도해요.",
         );
-        timer = setTimeout(run, 30000);
+        timer = setTimeout(run, retryDelay(cause?.code, ++failures));
       }
     };
     run();

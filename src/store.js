@@ -24,6 +24,7 @@ import { validateNoteImage, noteImageIds, imageId } from "./image-data.js";
 import { app, auth } from "./auth.js";
 import { watchWithSync } from "./cloud-sync.js";
 import { rolloverPatch, ROLLOVER_START } from "./rollover.js";
+import { getSeriesDocuments } from "./series-documents.js";
 import {
   parseBackup,
   backupStats,
@@ -220,10 +221,7 @@ export const restoreTask = (uid, task) =>
 export async function editTask(uid, task, patch, scope = "single") {
   const baseId = task.recurringTodoId || task.id;
   if (task.freq && scope === "series") {
-    const all = await getDocsFromServer(collection(db, "users", uid, "tasks"));
-    const linked = all.docs.filter(
-      (d) => d.id === baseId || d.data().recurringTodoId === baseId,
-    );
+    const linked = await getSeriesDocuments(db, uid, baseId);
     const seriesPatch = { updatedAt: Date.now() };
     for (const key of ["text", "note", "color", "checklist", "freq", "recurrence", "isMD"])
       if (key in patch) seriesPatch[key] = patch[key];

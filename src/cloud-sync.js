@@ -1,3 +1,8 @@
+export function retryDelay(code, failures, base = 30_000, maxDelay = 60 * 60_000) {
+  const minimum = code === "resource-exhausted" ? Math.max(base, 5 * 60_000) : base;
+  return Math.min(maxDelay, minimum * 2 ** Math.min(Math.max(failures - 1, 0), 16));
+}
+
 // Firestore's persistent listener already reconnects after network interruptions.
 // Reopening a healthy collection listener repeatedly re-reads its entire result.
 export function watchWithSync(listen, next, error, options = {}) {
@@ -36,8 +41,7 @@ export function watchWithSync(listen, next, error, options = {}) {
     const key = lastCode || cause?.message || String(cause);
     if (key !== reported) { reported = key; error?.(cause); }
     failures++;
-    const minimum = lastCode === "resource-exhausted" ? Math.max(base, 5 * 60_000) : base;
-    const delay = Math.min(maxDelay, minimum * 2 ** Math.min(failures - 1, 16));
+    const delay = retryDelay(lastCode, failures, base, maxDelay);
     timers.clearTimeout(timer);
     timer = timers.setTimeout(() => { timer = undefined; void attach(); }, delay);
   };

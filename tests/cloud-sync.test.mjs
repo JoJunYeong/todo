@@ -1,8 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { watchWithSync } from "../src/cloud-sync.js";
+import { retryDelay, watchWithSync } from "../src/cloud-sync.js";
 
 const flush = () => new Promise((resolve) => setImmediate(resolve));
+test("automatic retries slow down after repeated failures and quota exhaustion", () => {
+  assert.deepEqual([1, 2, 3].map(n => retryDelay("unavailable", n)), [30000, 60000, 120000]);
+  assert.deepEqual([1, 2, 20].map(n => retryDelay("resource-exhausted", n)), [300000, 600000, 3600000]);
+});
 function fixture(extra = {}) {
   const pending = new Set(), listeners = [], values = [], errors = [];
   const timers = {
