@@ -182,6 +182,14 @@ function schedule(task) {
 }
 export function expandWeek(tasks, start, end = addDays(start, 6)) {
   const result = new Map();
+  const bases = new Map();
+  for (const task of tasks) {
+    if (task.recurringTodoId && task.date && (task.isBase || task.isBaseDeleted)) {
+      const series = bases.get(task.recurringTodoId) || [];
+      series.push({ ...task, segmentStart: task.date });
+      bases.set(task.recurringTodoId, series);
+    }
+  }
   const stored = new Map(
     tasks
       .filter((t) => t.recurringTodoId && t.date)
@@ -213,14 +221,7 @@ export function expandWeek(tasks, start, end = addDays(start, 6)) {
     if (!isDate(rootStart)) continue;
     const events = [
       { ...master, segmentStart: rootStart },
-      ...tasks
-        .filter(
-          (t) =>
-            t.recurringTodoId === master.id &&
-            t.date &&
-            (t.isBase || t.isBaseDeleted),
-        )
-        .map((t) => ({ ...t, segmentStart: t.date })),
+      ...(bases.get(master.id) || []),
     ].sort((a, b) => a.segmentStart.localeCompare(b.segmentStart));
     for (let i = 0; i < events.length; i++) {
       const base = events[i],

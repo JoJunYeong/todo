@@ -50,8 +50,6 @@ import {
   monday,
   addDays,
   expandWeek,
-  buildSearchIndex,
-  searchTasks,
   WEEKDAYS,
   COLORS,
   htmlText,
@@ -70,15 +68,15 @@ import {
   SortableCard,
 } from "./drag-board.jsx";
 import { MotionPresence, usePresence } from "./motion.jsx";
-import { searchContext } from "./search-context.js";
+import { useSearch } from "./use-search.js";
 import { MatchedText, SearchExcerpt } from "./search-result.jsx";
 import {
   dayZone,
   listZone,
   moveOrder,
+  appendOrder,
   isRestingHoliday,
   canMoveCard,
-  completedLast,
 } from "./board-order.js";
 import { useHolidays } from "./use-holidays.js";
 import { useRollover } from "./use-rollover.js";
@@ -214,6 +212,16 @@ function Spinner({ label = "불러오는 중…" }) {
       <span>{label}</span>
     </div>
   );
+}
+
+function PlannerSkeleton({ label }) {
+  return <div className="planner-loading" role="status" aria-label={label}>
+    <aside><span /><i /><i /><i /></aside>
+    <main><div className="skeleton-heading"><span /><i /></div>
+      <div className="skeleton-columns">{Array.from({ length: 7 }, (_, i) =>
+        <div key={i}><span /><i /><i /><i /></div>)}</div>
+    </main><span className="sr-only">{label}</span>
+  </div>;
 }
 
 function Login({ ready }) {
@@ -718,24 +726,9 @@ export function Planner({ user, profile, isAdmin, store, notify }) {
       () => (previewActive ? preview.tasks : expandWeek(ownTasks, start)),
       [previewActive, preview, ownTasks, start],
     );
-  const live = useMemo(() => ownTasks.filter((t) => !t.deleted), [ownTasks]),
-    index = useMemo(
-      () => (search ? buildSearchIndex(tasks) : []),
-      [tasks, !!search],
-    );
-  const results = useMemo(
-    () => searchTasks(index, search, { status: filter, limit: searchLimit }),
-    [index, search, filter, searchLimit],
-  );
-  const searchPreviews = useMemo(() => {
-    const notes = new Map(index.map((item) => [item.task.id, item.noteText]));
-    return new Map(
-      results.map((task) => [
-        task.id,
-        searchContext(task, search, notes.get(task.id)),
-      ]),
-    );
-  }, [index, results, search]);
+  const live = useMemo(() => ownTasks.filter((t) => !t.deleted), [ownTasks]);
+  const { results, previews: searchPreviews, pending: searchPending, failure: searchFailure } =
+    useSearch(tasks, search, filter, searchLimit);
   const days = Array.from({ length: 7 }, (_, i) => addDays(start, i)),
     completed = week.filter((t) => t.done).length,
     total = week.length;
@@ -747,13 +740,11 @@ export function Planner({ user, profile, isAdmin, store, notify }) {
           id: dayZone(date),
           date,
           label: date,
-          items: completedLast(
-            week
+          items: week
               .filter(
                 (task) => task.date === date && (!hideCompleted || !task.done),
               )
               .sort((a, b) => (a.order || 0) - (b.order || 0)),
-          ),
         };
       }),
       ...(calendar?.lists || []).map((list) => ({
@@ -804,8 +795,14 @@ export function Planner({ user, profile, isAdmin, store, notify }) {
     }
   };
   const toggle = (t) => run(() => store.toggleTask(user.uid, t));
-  const newTask = (text, place) =>
-    run(() => store.addTask(user.uid, { text, calendarId: calId, ...place }));
+  const lastAppended = useRef(new Map());
+  const newTask = (text, place) => {
+    const zone = `${calId}:${place.date || "list:" + place.listId}`;
+    const peers = place.date ? week.filter(item => item.date === place.date) : live.filter(item => item.listId === place.listId);
+    const order = appendOrder(peers, lastAppended.current.get(zone));
+    lastAppended.current.set(zone, order);
+    return run(() => store.addTask(user.uid, { text, calendarId: calId, ...place, order }));
+  };
   const openTask = (t, target = null) => {
     setDetailSession((session) => session + 1);
     setSearchTarget(target);
@@ -848,7 +845,7 @@ export function Planner({ user, profile, isAdmin, store, notify }) {
       return Promise.reject(changed);
     }
     const peers = date
-      ? week.filter((item) => item.date === date && !!item.done === !!task.done)
+      ? week.filter((item) => item.date === date)
       : live.filter((item) => item.listId === targetList);
     return store
       .patchTask(user.uid, task, {
@@ -1287,11 +1284,9 @@ export function Planner({ user, profile, isAdmin, store, notify }) {
                 </div>
                 <div className="week-board" key={start + ":" + calId}>
                   {days.map((day, i) => {
-                    const items = completedLast(
-                      week.filter(
+                    const items = week.filter(
                         (t) => t.date === day && (!hideCompleted || !t.done),
-                      ),
-                    );
+                      );
                     return (
                       <DragZone
                         as="section"
@@ -1443,7 +1438,7 @@ export function Planner({ user, profile, isAdmin, store, notify }) {
               <section className="results-section">
                 <div className="results-header">
                   <span>
-                    {search
+                    {searchPending && !searchFailure ? "검색 중…" : search
                       ? "검색 결과 " +
                         results.length +
                         (results.length === searchLimit ? "개 이상" : "개")
@@ -1459,6 +1454,8 @@ export function Planner({ user, profile, isAdmin, store, notify }) {
                     <option value="done">완료</option>
                   </select>
                 </div>
+                {searchPending && !searchFailure && <div className="search-progress" role="status" aria-label="검색 중"><span /></div>}
+                {searchFailure && <p role="alert" className="form-error">검색을 시작하지 못했어요. 페이지를 새로고침해 주세요.</p>}
                 {results.map((t) => (
                   <div className="search-result" key={t.id}>
                     <TaskCard
@@ -1473,7 +1470,7 @@ export function Planner({ user, profile, isAdmin, store, notify }) {
                     />
                   </div>
                 ))}
-                {search && !results.length && (
+                {search && !searchPending && !searchFailure && !results.length && (
                   <div className="empty-state">
                     <Search size={30} />
                     <h3>일치하는 항목이 없어요</h3>
@@ -1864,11 +1861,11 @@ function App() {
           </button>
         </div>
       ) : !authReady ? (
-        <Spinner label="로그인 상태를 확인하고 있어요…" />
+        <PlannerSkeleton label="로그인 상태를 확인하고 있어요…" />
       ) : !user ? (
         <Login ready={authReady} />
       ) : !profile || !store ? (
-        <Spinner label="나의 작업 공간을 열고 있어요…" />
+        <PlannerSkeleton label="나의 작업 공간을 열고 있어요…" />
       ) : !profile.active ? (
         <div className="fatal-error">
           <ShieldCheck size={35} />

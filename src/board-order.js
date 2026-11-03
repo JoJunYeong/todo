@@ -24,8 +24,10 @@ export function projectTask(groups, taskId, target, beforeId = null) {
     task,
     ...items.slice(at < 0 ? items.length : at),
   ];
-  if (target.startsWith("day:")) next[target] = completedLast(next[target]);
   return next;
+}
+export function appendOrder(peers, previous = 0, now = Date.now()) {
+  return Math.max(now, previous, ...peers.map(item => Number.isFinite(item.order) ? item.order : 0)) + 1024;
 }
 export function moveOrder(peers, activeId, beforeId, now = Date.now()) {
   const items = peers

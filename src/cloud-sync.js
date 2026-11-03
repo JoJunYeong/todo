@@ -1,66 +1,51 @@
-export const SYNC_INTERVAL_MS = 30_000;
-
-// Reopening a persisted Firestore listener resumes its server query and keeps
-// local pending writes. It does not replace the collection with a stale copy.
+// Firestore's persistent listener already reconnects after network interruptions.
+// Reopening a healthy collection listener repeatedly re-reads its entire result.
 export function watchWithSync(listen, next, error, options = {}) {
-  const win = options.window ?? globalThis.window;
-  const page = options.document ?? globalThis.document;
   const timers = options.timers ?? globalThis;
-  const now = options.now ?? Date.now;
-  let unsubscribe, closed = false, generation = 0, refreshing = false;
-  let failed = false, reported = "", lastRefresh = -Infinity;
-  const report = (cause) => {
-    failed = true;
-    const key = cause?.code || cause?.message || String(cause);
-    if (reported !== key) {
-      reported = key;
-      error?.(cause);
-    }
-  };
-  const attach = async (initial = false) => {
-    if (closed || refreshing) return;
-    if (!initial && (win?.navigator?.onLine === false || page?.visibilityState === "hidden")) return;
-    if (!initial && now() - lastRefresh < 1000) return;
-    refreshing = true;
-    lastRefresh = now();
+  const base = options.interval ?? 30_000;
+  const maxDelay = options.maxDelay ?? 60 * 60_000;
+  let unsubscribe, timer, closed = false, generation = 0;
+  let failures = 0, reported = "";
+
+  const attach = async () => {
+    if (closed) return;
     const current = ++generation;
     unsubscribe?.();
     unsubscribe = undefined;
     try {
-      if (failed) await options.beforeRetry?.();
+      if (failures && (lastCode === "permission-denied" || lastCode === "unauthenticated"))
+        await options.beforeRetry?.();
       if (closed || current !== generation) return;
       const stop = listen(
         (snapshot) => {
           if (closed || current !== generation) return;
-          if (!snapshot.metadata?.fromCache) {
-            failed = false;
-            reported = "";
-          }
+          if (!snapshot.metadata?.fromCache) { failures = 0; reported = ""; }
           next(snapshot);
         },
-        (cause) => {
-          if (!closed && current === generation) report(cause);
-        },
+        (cause) => { if (!closed && current === generation) retry(cause); },
       );
       if (closed || current !== generation) stop?.();
       else unsubscribe = stop;
     } catch (cause) {
-      if (!closed && current === generation) report(cause);
-    } finally {
-      refreshing = false;
+      if (!closed && current === generation) retry(cause);
     }
   };
-  const refresh = () => { void attach(); };
-  void attach(true);
-  const timer = timers.setInterval(refresh, options.interval ?? SYNC_INTERVAL_MS);
-  for (const name of ["online", "focus", "pageshow"]) win?.addEventListener(name, refresh);
-  page?.addEventListener("visibilitychange", refresh);
+  let lastCode = "";
+  const retry = (cause) => {
+    lastCode = cause?.code || "";
+    const key = lastCode || cause?.message || String(cause);
+    if (key !== reported) { reported = key; error?.(cause); }
+    failures++;
+    const minimum = lastCode === "resource-exhausted" ? Math.max(base, 5 * 60_000) : base;
+    const delay = Math.min(maxDelay, minimum * 2 ** Math.min(failures - 1, 16));
+    timers.clearTimeout(timer);
+    timer = timers.setTimeout(() => { timer = undefined; void attach(); }, delay);
+  };
+  void attach();
   return () => {
     closed = true;
     generation++;
+    timers.clearTimeout(timer);
     unsubscribe?.();
-    timers.clearInterval(timer);
-    for (const name of ["online", "focus", "pageshow"]) win?.removeEventListener(name, refresh);
-    page?.removeEventListener("visibilitychange", refresh);
   };
 }
