@@ -75,6 +75,7 @@ import {
   listZone,
   moveOrder,
   appendOrder,
+  completedLast,
   isRestingHoliday,
   canMoveCard,
 } from "./board-order.js";
@@ -740,22 +741,26 @@ export function Planner({ user, profile, isAdmin, store, notify }) {
           id: dayZone(date),
           date,
           label: date,
-          items: week
+          items: completedLast(
+            week
               .filter(
                 (task) => task.date === date && (!hideCompleted || !task.done),
               )
               .sort((a, b) => (a.order || 0) - (b.order || 0)),
+          ),
         };
       }),
       ...(calendar?.lists || []).map((list) => ({
         id: listZone(list.id),
         listId: list.id,
         label: list.name,
-        items: live
-          .filter(
-            (task) => task.listId === list.id && (!hideCompleted || !task.done),
-          )
-          .sort((a, b) => (a.order || 0) - (b.order || 0)),
+        items: completedLast(
+          live
+            .filter(
+              (task) => task.listId === list.id && (!hideCompleted || !task.done),
+            )
+            .sort((a, b) => (a.order || 0) - (b.order || 0)),
+        ),
       })),
     ],
     [start, week, calendar, live, hideCompleted],
@@ -844,9 +849,10 @@ export function Planner({ user, profile, isAdmin, store, notify }) {
       error(changed);
       return Promise.reject(changed);
     }
-    const peers = date
+    const peers = (date
       ? week.filter((item) => item.date === date)
-      : live.filter((item) => item.listId === targetList);
+      : live.filter((item) => item.listId === targetList))
+      .filter((item) => !!item.done === !!task.done);
     return store
       .patchTask(user.uid, task, {
         date,
@@ -1284,9 +1290,9 @@ export function Planner({ user, profile, isAdmin, store, notify }) {
                 </div>
                 <div className="week-board" key={start + ":" + calId}>
                   {days.map((day, i) => {
-                    const items = week.filter(
-                        (t) => t.date === day && (!hideCompleted || !t.done),
-                      );
+                    const items = dragZones.find(
+                      (zone) => zone.id === dayZone(day),
+                    ).items;
                     return (
                       <DragZone
                         as="section"
@@ -1668,9 +1674,11 @@ function Backlogs({
       </div>
       <div className="backlog-grid">
         {(calendar?.lists || []).map((list, i) => {
-          const items = live
-            .filter((t) => t.listId === list.id && (!hideCompleted || !t.done))
-            .sort((a, b) => (a.order || 0) - (b.order || 0));
+          const items = completedLast(
+            live
+              .filter((t) => t.listId === list.id && (!hideCompleted || !t.done))
+              .sort((a, b) => (a.order || 0) - (b.order || 0)),
+          );
           return (
             <DragZone
               as="section"

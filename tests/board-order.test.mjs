@@ -33,7 +33,7 @@ test("daily completion grouping preserves each status group's manual order and s
   );
   assert.deepEqual(completedLast([]), []);
 });
-test("dated drag previews preserve the requested position regardless of completion", () => {
+test("dated and undated drag previews keep completed tasks below unfinished tasks", () => {
   const done = { id: "done", done: true, order: 0 };
   const groups = {
     "day:2026-10-21": [a, done],
@@ -42,18 +42,18 @@ test("dated drag previews preserve the requested position regardless of completi
   const unfinished = projectTask(groups, "b", "day:2026-10-21");
   assert.deepEqual(
     unfinished["day:2026-10-21"].map((task) => task.id),
-    ["a", "done", "b"],
+    ["a", "b", "done"],
   );
   const completed = projectTask(groups, "c", "day:2026-10-21", "a");
   assert.deepEqual(
     completed["day:2026-10-21"].map((task) => task.id),
-    ["c", "a", "done"],
+    ["a", "c", "done"],
   );
   assert.deepEqual(
     projectTask(groups, "done", "list:later", "b")["list:later"].map(
       (task) => task.id,
     ),
-    ["done", "b", "c"],
+    ["b", "done", "c"],
   );
   assert.deepEqual(groups["day:2026-10-21"], [a, done]);
 });

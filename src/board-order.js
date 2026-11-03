@@ -19,11 +19,11 @@ export function projectTask(groups, taskId, target, beforeId = null) {
   };
   const items = source === target ? next[source] : [...groups[target]];
   const at = beforeId ? items.findIndex((item) => item.id === beforeId) : -1;
-  next[target] = [
+  next[target] = completedLast([
     ...items.slice(0, at < 0 ? items.length : at),
     task,
     ...items.slice(at < 0 ? items.length : at),
-  ];
+  ]);
   return next;
 }
 export function appendOrder(peers, previous = 0, now = Date.now()) {
