@@ -2,6 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { initializeTestEnvironment } from "@firebase/rules-unit-testing";
 import { initializeApp, deleteApp } from "firebase/app";
 import {
@@ -18,7 +20,7 @@ import {
   getDocFromServer,
   setLogLevel,
 } from "firebase/firestore";
-import { DaynoteClient, encodeFields } from "../public/daynote-ai.mjs";
+import { DaynoteClient, DaynoteError, createFileOutbox, dispatch, encodeFields } from "../public/daynote-ai.mjs";
 
 if (
   process.env.FIRESTORE_EMULATOR_HOST !== "127.0.0.1:18871" ||
@@ -158,6 +160,23 @@ test(
         },
       );
       await t.test(
+        "indexed date and calendar queries exclude unrelated tasks and preserve pagination",
+        async () => {
+          for (let i = 0; i < 3; i++) await client.createTask({ ...original, requestId: "outside-range-00" + i, text: "Unrelated sample", date: "2026-10-20" });
+          const filters = { from: original.date, to: original.date, calendarId: "personal", pageSize: 1 };
+          const first = await client.listTasks(filters);
+          assert.deepEqual(first.tasks.map((task) => task.id), [saved.id]);
+          assert.equal(first.scanned, 1);
+          assert.ok(first.nextPageToken.startsWith("dnq1:"));
+          const last = await client.listTasks({ ...filters, pageToken: first.nextPageToken });
+          assert.equal(last.scanned, 0);
+          assert.equal(last.complete, true);
+          assert.equal((await client.listTasks({ done: false })).tasks.length, 4);
+          assert.equal((await client.listTasks({ calendarId: "personal" })).tasks.length, 4);
+          assert.equal((await client.listTasks({ calendarId: "unknown" })).scanned, 0);
+        },
+      );
+      await t.test(
         "simultaneous retries produce one task and one receipt",
         async () => {
           const args = {
@@ -174,6 +193,40 @@ test(
             (await client.listTasks({ query: "Concurrent" })).tasks.length,
             1,
           );
+        },
+      );
+      await t.test(
+        "durable retry verifies an ambiguous committed write without creating a duplicate",
+        async () => {
+          const directory = fs.mkdtempSync(path.join(os.tmpdir(), "daynote-ai-recovery-test-"));
+          let clock = Date.now();
+          const outbox = await createFileOutbox(client.config, directory, { now: () => clock });
+          const request = client._request.bind(client);
+          let failReadback = true;
+          client._request = async (url, options) => {
+            if (failReadback && url.startsWith(client.userPath + "/tasks/")) {
+              failReadback = false;
+              const error = new DaynoteError("quota after commit", 429, "RESOURCE_EXHAUSTED");
+              error.retryAt = new Date(clock + 60000).toISOString();
+              throw error;
+            }
+            return request(url, options);
+          };
+          client.onMutationError = (operation, args, error) => outbox.capture(operation, args, error);
+          try {
+            await assert.rejects(dispatch(client, "createTask", { ...original, requestId: "ambiguous-commit-001", text: "Ambiguous commit" }), (error) => error.queued === true);
+            assert.equal((await outbox.retry(client)).pending, 1);
+            clock += 60001;
+            const restarted = await createFileOutbox(client.config, directory, { now: () => clock });
+            assert.equal((await restarted.retry(client)).saved, 1);
+            assert.equal((await restarted.retry(client)).saved, 0);
+            const tasks = await client.listTasks({ from: original.date, to: original.date, query: "Ambiguous commit" });
+            assert.equal(tasks.tasks.length, 1);
+          } finally {
+            client._request = request;
+            delete client.onMutationError;
+            fs.rmSync(directory, { recursive: true });
+          }
         },
       );
       await t.test(
@@ -314,6 +367,8 @@ test(
           await updateDoc(grant, { revoked: true });
           await denied(client.status());
           await denied(client.listTasks());
+          await denied(client.listTasks({ from: original.date }));
+          await denied(client.listTasks({ calendarId: "personal" }));
           await updateDoc(grant, { ...connection, revoked: false });
           await env.withSecurityRulesDisabled((c) =>
             updateDoc(doc(c.firestore(), "users", uid, "aiConnections", aid), {
