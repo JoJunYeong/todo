@@ -5,6 +5,18 @@ export class DaynoteError extends Error {
     Object.assign(this, { status, code });
   }
 }
+// Firestore's free daily quota resets around midnight in Los Angeles, including DST.
+export function quotaRetryAt(now = Date.now()) {
+  const day = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles" });
+  const today = day.format(now);
+  let low = now, high = now + 27 * 60 * 60 * 1000;
+  while (high - low > 1) {
+    const mid = Math.floor((low + high) / 2);
+    if (day.format(mid) === today) low = mid;
+    else high = mid;
+  }
+  return new Date(high + 5 * 60 * 1000).toISOString();
+}
 const fail = (message) => {
   throw new DaynoteError(message);
 };
@@ -256,12 +268,16 @@ export class DaynoteClient {
     if (!response.ok) {
       const code = data.error?.status || "API_ERROR";
       const message =
-        code === "PERMISSION_DENIED"
+        code === "RESOURCE_EXHAUSTED"
+          ? "Firestore 사용 한도에 도달했어요. 반복 조회를 멈추고 한도 초기화 후 같은 요청 ID로 재시도해 주세요."
+          : code === "PERMISSION_DENIED"
           ? "AI 연결 권한이 없거나 만료·폐기됐어요. 읽기 전용 연결인지도 확인해 주세요."
           : ["FAILED_PRECONDITION", "ALREADY_EXISTS", "ABORTED"].includes(code)
             ? "다른 변경이 있어 저장하지 않았어요. 최신 내용을 읽고 다시 수정해 주세요."
             : "Daynote API 요청에 실패했어요.";
-      throw new DaynoteError(message, response.status, code);
+      const error = new DaynoteError(message, response.status, code);
+      if (code === "RESOURCE_EXHAUSTED") error.retryAt = quotaRetryAt(this.now());
+      throw error;
     }
     return data;
   }
@@ -325,9 +341,46 @@ export class DaynoteClient {
       (typeof query !== "string" || query.length > 1000)
     )
       fail("검색어를 확인해 주세요.");
-    const params = new URLSearchParams({ pageSize: String(pageSize) });
-    if (pageToken) params.set("pageToken", pageToken);
-    const d = await this._request(this.userPath + "/tasks?" + params);
+    // Apply one indexed field on the server; retain other filters locally to avoid
+    // requiring new composite indexes or changing existing matching semantics.
+    const field = from || to ? "date" : calendarId ? "calendarId" : done !== undefined ? "done" : null;
+    let d;
+    if (field && (!pageToken || pageToken.startsWith("dnq1:"))) {
+      const signature = await hash(stable({ path: this.userPath, query, from, to, calendarId, done, includeDeleted }));
+      const filters = [];
+      const filter = (op, value) => filters.push({ fieldFilter: { field: { fieldPath: field }, op, value: encodeValue(value) } });
+      if (field === "date") {
+        if (from) filter("GREATER_THAN_OR_EQUAL", from);
+        if (to) filter("LESS_THAN_OR_EQUAL", to);
+      } else filter("EQUAL", field === "calendarId" ? calendarId : done);
+      const structuredQuery = {
+        from: [{ collectionId: "tasks" }],
+        where: filters.length === 1 ? filters[0] : { compositeFilter: { op: "AND", filters } },
+        orderBy: [{ field: { fieldPath: field }, direction: "ASCENDING" }, { field: { fieldPath: "__name__" }, direction: "ASCENDING" }],
+        limit: pageSize,
+      };
+      if (pageToken) {
+        let cursor;
+        try { cursor = JSON.parse(decodeURIComponent(pageToken.slice(5))); } catch { fail("검색 페이지 토큰을 확인해 주세요."); }
+        if (cursor.signature !== signature || !plain(cursor.value) ||
+            typeof cursor.name !== "string" || !cursor.name.startsWith(this.userPath + "/tasks/") ||
+            !id(cursor.name.slice((this.userPath + "/tasks/").length)) ||
+            (field === "date" ? !date(cursor.value.stringValue) : field === "calendarId" ? !id(cursor.value.stringValue) : typeof cursor.value.booleanValue !== "boolean"))
+          fail("검색 조건이 달라졌어요. 첫 페이지부터 다시 조회해 주세요.");
+        structuredQuery.startAt = { values: [cursor.value, { referenceValue: cursor.name }], before: false };
+      }
+      const rows = await this._request(this.userPath + ":runQuery", { method: "POST", body: { structuredQuery } });
+      const documents = rows.filter((r) => r.document).map((r) => r.document);
+      const last = documents.at(-1);
+      d = { documents, nextPageToken: documents.length === pageSize
+        ? "dnq1:" + encodeURIComponent(JSON.stringify({ signature, value: last.fields[field], name: last.name })) : null };
+    } else {
+      if (pageToken?.startsWith("dnq1:")) fail("검색 조건이 달라졌어요. 첫 페이지부터 다시 조회해 주세요.");
+      // Existing native Firestore page tokens remain valid, including in-flight searches.
+      const params = new URLSearchParams({ pageSize: String(pageSize) });
+      if (pageToken) params.set("pageToken", pageToken);
+      d = await this._request(this.userPath + "/tasks?" + params);
+    }
     const needle = query?.normalize("NFKC").toLocaleLowerCase("ko");
     const tasks = (d.documents || [])
       .map((x) => this._task(x))
@@ -617,7 +670,14 @@ export const TOOL_DEFINITIONS = [
 export async function dispatch(client, operation, args = {}) {
   if (!TOOL_DEFINITIONS.some((t) => t.operation === operation))
     fail("지원하지 않는 작업이에요.");
-  return client[operation](args);
+  try { return await client[operation](args); }
+  catch (error) {
+    if (["createTask", "updateTask", "appendNote"].includes(operation) && client.onMutationError) {
+      try { Object.assign(error, await client.onMutationError(operation, args, error)); }
+      catch { error.queueError = "실패한 요청을 로컬에 보관하지 못했어요. 원래 요청을 보존해 주세요."; }
+    }
+    throw error;
+  }
 }
 export async function mcpMessage(client, message) {
   if (!plain(message) || message.jsonrpc !== "2.0")
@@ -678,6 +738,7 @@ export async function mcpMessage(client, message) {
             text: JSON.stringify({
               error: e.code || "API_ERROR",
               message: e.message,
+              ...errorRecovery(e),
             }),
           },
         ],
@@ -691,6 +752,97 @@ export async function mcpMessage(client, message) {
     error: { code: -32601, message: "Method not found" },
   };
 }
+const mutationOperations = ["createTask", "updateTask", "appendNote"];
+const errorRecovery = (error) => Object.fromEntries(["queued", "pendingFile", "retryAt", "queueError"].filter((key) => key in error).map((key) => [key, error[key]]));
+const retryable = (error) => ["RESOURCE_EXHAUSTED", "UNAVAILABLE", "DEADLINE_EXCEEDED", "INTERNAL", "API_ERROR"].includes(error.code) ||
+  ["TimeoutError", "AbortError"].includes(error.name) || (error instanceof TypeError && /fetch|network/i.test(error.message));
+
+// Only the Node CLI/MCP installs this hook. No credentials are stored with requests.
+export async function createFileOutbox(config, directory, { now = Date.now } = {}) {
+  const fs = await import("node:fs/promises");
+  const path = await import("node:path");
+  await fs.mkdir(directory, { recursive: true, mode: 0o700 });
+  if (((await fs.stat(directory)).mode & 0o077) !== 0) throw Error("재저장 폴더는 본인만 접근할 수 있어야 해요.");
+  const scope = { projectId: config.projectId, ownerUid: config.ownerUid, agentUid: config.agentUid };
+  const matches = (entry) => Object.entries(scope).every(([key, value]) => entry[key] === value);
+  const write = async (file, entry, exclusive = false) => {
+    const temporary = file + "." + crypto.randomUUID() + ".tmp";
+    try {
+      await fs.writeFile(temporary, JSON.stringify(entry) + "\n", { flag: "wx", mode: 0o600 });
+      if (exclusive) await fs.link(temporary, file);
+      else await fs.rename(temporary, file);
+    } finally { await fs.unlink(temporary).catch(() => {}); }
+  };
+  const read = async (file) => {
+    try { return JSON.parse(await fs.readFile(file, "utf8")); }
+    catch (error) { if (error.code === "ENOENT") return null; throw error; }
+  };
+  return {
+    async capture(operation, args, error) {
+      if (!mutationOperations.includes(operation) || !retryable(error)) return {};
+      if (typeof args.requestId !== "string" || args.requestId.length < 8 || args.requestId.length > 200) return {};
+      const contentHash = await hash(stable({ operation, ...args }));
+      const file = path.join(directory, await hash(stable({ ...scope, requestId: args.requestId })) + ".json");
+      for (;;) {
+        const previous = await read(file);
+        if (previous && (!matches(previous) || previous.contentHash !== contentHash))
+          throw new DaynoteError("보관된 요청 ID의 내용이 달라요.", 409, "IDEMPOTENCY_CONFLICT");
+        if (previous?.state === "saved" || previous?.state === "blocked") return { queued: false, pendingFile: file };
+        if (previous) return { queued: true, pendingFile: file, retryAt: previous.retryAt };
+        const retryAt = error.retryAt || new Date(now() + 60000).toISOString();
+        try {
+          await write(file, { version: 1, ...scope, operation, args, contentHash, state: "pending", createdAt: new Date(now()).toISOString(), attempts: 0, retryAt, lastError: error.code || error.name }, true);
+        } catch (error) { if (error.code === "EEXIST") continue; throw error; }
+        return { queued: true, pendingFile: file, retryAt };
+      }
+    },
+    async retry(client) {
+      const result = { saved: 0, pending: 0, blocked: 0, nextRetryAt: null, errors: [] };
+      for (const name of (await fs.readdir(directory)).filter((name) => /^[a-f0-9]{64}\.json$/.test(name))) {
+        const file = path.join(directory, name);
+        try {
+          // Atomic publication preserves the first draft. The server's immutable
+          // receipt serializes effects even if two workers replay concurrently;
+          // no abandoned local lock can prevent recovery after a crash.
+          await (async () => {
+            const entry = await read(file);
+            if (!entry || !matches(entry) || entry.state === "saved") return;
+            if (entry.state === "blocked") { result.blocked++; return; }
+            if (!Number.isFinite(Date.parse(entry.retryAt)) || !mutationOperations.includes(entry.operation) || !plain(entry.args) ||
+                entry.contentHash !== await hash(stable({ operation: entry.operation, ...entry.args }))) {
+              throw Error("보관된 재저장 요청이 손상됐어요.");
+            }
+            if (Date.parse(entry.retryAt) <= now()) {
+              try {
+                const response = await client[entry.operation](entry.args);
+                if (response.serverVerified !== true || !response.task?.id) throw Object.assign(Error("저장 결과를 확인하지 못했어요."), { code: "UNAVAILABLE" });
+                const { args, ...receipt } = entry;
+                await write(file, { ...receipt, state: "saved", savedAt: new Date(now()).toISOString(), result: { taskId: response.task.id, revision: response.task.revision, serverVerified: true } });
+                result.saved++;
+                return;
+              } catch (error) {
+                entry.attempts++;
+                entry.lastError = error.code || error.name;
+                if (!retryable(error)) entry.state = "blocked";
+                else entry.retryAt = error.retryAt || new Date(now() + Math.min(60 * 60 * 1000, 60000 * 2 ** Math.min(entry.attempts, 6))).toISOString();
+                await write(file, entry);
+              }
+            }
+            if (entry.state === "blocked") result.blocked++;
+            else {
+              result.pending++;
+              if (!result.nextRetryAt || entry.retryAt < result.nextRetryAt) result.nextRetryAt = entry.retryAt;
+            }
+          })();
+        } catch (error) {
+          result.blocked++; result.errors.push({ file: name, code: error.code || "INVALID_PENDING_REQUEST" });
+        }
+      }
+      return result;
+    },
+  };
+}
+
 async function cli() {
   const fs = await import("node:fs/promises"),
     os = await import("node:os"),
@@ -737,6 +889,12 @@ async function cli() {
       }
     },
   });
+  const outbox = await createFileOutbox(config, path.join(path.dirname(configFile), "pending"));
+  client.onMutationError = (operation, args, error) => outbox.capture(operation, args, error);
+  if (process.argv[2] === "retry-pending") {
+    console.log(JSON.stringify(await outbox.retry(client)));
+    return;
+  }
   if (process.argv[2] === "mcp") {
     const readline = await import("node:readline");
     for await (const line of readline.createInterface({
@@ -766,7 +924,7 @@ async function cli() {
     console.log(JSON.stringify(await dispatch(client, operation, args)));
   } else
     fail(
-      "사용법: node daynote-ai.mjs call < request.json 또는 node daynote-ai.mjs mcp",
+      "사용법: node daynote-ai.mjs call < request.json / mcp / retry-pending",
     );
 }
 if (
@@ -780,6 +938,7 @@ if (
       console.error(
         JSON.stringify({
           error: e.code || "CONFIG_ERROR",
+          ...errorRecovery(e),
           message:
             e instanceof SyntaxError
               ? "JSON 파일 형식을 확인해 주세요."
