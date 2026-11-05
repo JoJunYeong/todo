@@ -81,6 +81,7 @@ import {
 } from "./board-order.js";
 import { useHolidays } from "./use-holidays.js";
 import { useRollover } from "./use-rollover.js";
+import { watchDayChange } from "./day-clock.js";
 import { currentTask } from "./task-sync.js";
 import {
   readWeekPreview,
@@ -564,13 +565,10 @@ export function Planner({ user, profile, isAdmin, store, notify }) {
     enabled: profile.settings?.autoRollover !== false,
   });
   useEffect(() => {
-    const tick = () => setToday(dateKey());
-    const timer = setInterval(tick, 30000);
-    document.addEventListener("visibilitychange", tick);
-    return () => {
-      clearInterval(timer);
-      document.removeEventListener("visibilitychange", tick);
-    };
+    return watchDayChange(dateKey, (day) => {
+      setToday(day);
+      setOnline(navigator.onLine);
+    });
   }, []);
   const previousToday = useRef(today);
   useEffect(() => {
